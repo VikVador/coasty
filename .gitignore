@@ -7,8 +7,8 @@
 # Victor
 *.sh
 *.png
-# cluster/*
 data/*
+plots/*
 
 # Scripts
 # *.sh

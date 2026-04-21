@@ -18,6 +18,7 @@ FONT_SIZE_ANNOTATION = 10         # In-plot text annotations
 FIGURE_SIZE_SQUARE = (8, 8)       # Equal axes, e.g. maps or scatter plots
 FIGURE_SIZE_WIDE   = (12, 5)      # Wider than tall, e.g. time series
 FIGURE_SIZE_TALL   = (6, 10)      # Taller than wide, e.g. vertical profiles
+FIGURE_SIZE_MAP    = (14, 7)      # Global map figures
 
 # --- DPI ---
 FIGURE_DPI      = 100             # Screen display
@@ -43,5 +44,7 @@ ALPHA_GRID    = 0.4               # Grid lines
 ALPHA_SCATTER = 0.7               # Scatter plot points
 
 # --- Colormaps ---
-CMAP_OXYGEN_SEQUENTIAL = cmo.haline   # Sequential colormap for oxygen concentration
-CMAP_OXYGEN_DIVERGING  = cmo.balance  # Diverging colormap for oxygen anomalies
+CMAP_OXYGEN_SEQUENTIAL = cmo.cm.haline   # Sequential colormap for oxygen concentration
+CMAP_OXYGEN_DIVERGING  = cmo.cm.balance  # Diverging colormap for oxygen anomalies
+CMAP_HYPOXIA_COUNT     = "plasma"      # Count of hypoxic profiles per site
+CMAP_HYPOXIA_PCT       = cmo.cm.matter   # Hypoxic percentage per site
