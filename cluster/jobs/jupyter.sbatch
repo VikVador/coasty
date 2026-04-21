@@ -4,11 +4,11 @@
 # --------------
 #SBATCH --account=bsmfc
 #SBATCH --job-name=JUPYTER
-#SBATCH --time=02:00:00
+#SBATCH --time=01:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=60G
-#SBATCH --partition=debug
+#SBATCH --mem=8G
+#SBATCH --partition=batch
 #SBATCH --output=../logs/jupiter_notebook.log
 #
 # ----
