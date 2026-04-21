@@ -1,0 +1,54 @@
+[project]
+name = "coasty"
+version = "0.0.1"
+description = "Coasty: A Python package for coastal ocean data analysis and visualization."
+readme = "README.md"
+license = "MIT"
+
+dependencies = [
+  "matplotlib==3.9.0",
+  "cartopy==0.25.0",
+  "numpy==1.26.3",
+  "einops==0.8.0",
+  "xarray==2025.9.0",
+  "zarr==3.1.2",
+  "h5py==3.12.1",
+  "dask==2024.6.2",
+]
+
+[project.optional-dependencies]
+all = [
+  "jupyterlab==4.2.2",
+  "ipykernel==6.29.5",
+  "pre-commit==3.7.1",
+  "pytest==8.2.2",
+  "ruff==0.4.8",
+]
+
+[tool.ruff]
+extend-include = ["*.ipynb"]
+line-length = 99
+
+[tool.ruff.lint]
+extend-select = ["ANN", "B", "I", "UP", "W"]
+ignore = ["ANN002", "ANN003", "ANN401", "E731", "E741"]
+preview = true
+
+[tool.ruff.lint.extend-per-file-ignores]
+"__init__.py" = ["F401"]
+"test_*.py" = ["F403", "F405"]
+"*.ipynb" = ["B007"]
+
+[tool.ruff.lint.isort]
+lines-between-types = 1
+relative-imports-order = "closest-to-furthest"
+section-order = ["future", "third-party", "first-party", "local-folder"]
+
+[tool.ruff.format]
+preview = true
+
+[tool.setuptools.dynamic]
+version = {attr = "coasty.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["coasty*"]
