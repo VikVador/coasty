@@ -46,5 +46,19 @@ ALPHA_SCATTER = 0.7               # Scatter plot points
 # --- Colormaps ---
 CMAP_OXYGEN_SEQUENTIAL = cmo.cm.haline   # Sequential colormap for oxygen concentration
 CMAP_OXYGEN_DIVERGING  = cmo.cm.balance  # Diverging colormap for oxygen anomalies
-CMAP_HYPOXIA_COUNT     = "plasma"      # Count of hypoxic profiles per site
+CMAP_HYPOXIA_COUNT     = "plasma"        # Count of hypoxic profiles per site
 CMAP_HYPOXIA_PCT       = cmo.cm.matter   # Hypoxic percentage per site
+CMAP_SAMPLING_COUNT    = "viridis"       # Total profile count per site (sampling effort)
+CMAP_COVERAGE          = "YlGnBu"        # Fraction of months covered (aggregation analysis)
+
+# --- Diaz & Rosenberg hypoxia regime colors ---
+DIAZ_COLOR_SEASONAL   = "orange"
+DIAZ_COLOR_EPISODIC   = "steelblue"
+DIAZ_COLOR_PERSISTENT = "crimson"
+DIAZ_COLOR_UNKNOWN    = "gray"
+
+# --- Sampling intensity classification colors (figure-12) ---
+SAMPLING_COLOR_EPISODIC  = "#fee090"
+SAMPLING_COLOR_IRREGULAR = "#fdae61"
+SAMPLING_COLOR_MODERATE  = "#f46d43"
+SAMPLING_COLOR_INTENSE   = "#d73027"

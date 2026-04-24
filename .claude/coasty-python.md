@@ -58,19 +58,21 @@ IMPORTANT: Each time you work on a figure's script
 ```python
 
 # PROMPT
+
+
 figure_prompt = """
 
     Our prompt to generate the figure will be written by ourselves here.
 
 """
 
-# LIBRARIES
+
 # INCLUDE ALL THE LIBRARIES YOU NEED TO GENERATE THE FIGURE HERE
 
 # FUNCTIONS
 # DEFINE ALL THE FUNCTIONS YOU NEED IN ADDITION TO THE ONES ALREADY IN THE CODEBASE HERE (ONLY IF THEY DO NOT EXIST IN THE CODEBASE)
 
-# MAIN CODE
+
 if __name__ == "__main__":
 
     #
