@@ -7,6 +7,7 @@ import numpy as np
 import xarray as xr
 
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 
 from coasty.const import (
     BIN_SIZE,
@@ -21,8 +22,10 @@ from .const import (
     FIGURE_DPI,
     FIGURE_SIZE_MAP,
     FONT_SIZE_COLORBAR,
+    FONT_SIZE_LEGEND,
     FONT_SIZE_TICK,
     FONT_SIZE_TITLE,
+    LEGEND_FRAMEALPHA,
     LINE_WIDTH_THIN,
     MARKER_SIZE_LARGE,
     MARKER_SIZE_SMALL,
@@ -166,6 +169,52 @@ def compute_bottom_oxygen(ds: xr.Dataset) -> np.ndarray:
     return np.where(count > 0, dox2_sum / count_safe, np.nan)
 
 
+def add_size_legend(
+    ax: plt.Axes,
+    thresholds: list[float],
+    metric: np.ndarray,
+    log_scale: bool = True,
+    color: str = "gray",
+    loc: str = "lower left",
+) -> None:
+    r"""Add a size reference legend to map axes using proxy Line2D markers.
+
+    Proxy marker sizes are computed with the same formula as plot_hypoxia_map so
+    that the legend accurately reflects the scatter-plot encoding.
+
+    Arguments:
+        - ax          : Cartopy GeoAxes or standard Axes to annotate.
+        - thresholds  : Reference values shown in the legend (e.g. [10, 100, 1000]).
+        - metric      : Full metric array used in the corresponding scatter plot.
+        - log_scale   : True if plot_hypoxia_map was called with log_scale=True.
+        - color       : Marker fill color for all proxy handles.
+        - loc         : Legend location string (e.g. "lower left").
+    """
+    vals = np.log1p(metric.astype(float)) if log_scale else metric.astype(float)
+    vmin, vmax = vals.min(), vals.max()
+    span = vmax - vmin + 1e-10
+
+    handles = []
+    for t in thresholds:
+        val = np.log1p(float(t)) if log_scale else float(t)
+        norm_val = (val - vmin) / span
+        marker_r = MARKER_SIZE_SMALL + norm_val * (MARKER_SIZE_LARGE - MARKER_SIZE_SMALL)
+        handle = Line2D(
+            [],
+            [],
+            marker="o",
+            linestyle="none",
+            markersize=max(marker_r, 2.0),
+            markerfacecolor=color,
+            markeredgecolor="black",
+            markeredgewidth=0.3,
+            label=rf"$< {int(t)}$",
+        )
+        handles.append(handle)
+
+    ax.legend(handles=handles, fontsize=FONT_SIZE_LEGEND, loc=loc, framealpha=LEGEND_FRAMEALPHA)
+
+
 def plot_hypoxia_map(
     site_lats: np.ndarray,
     site_lons: np.ndarray,
@@ -174,6 +223,7 @@ def plot_hypoxia_map(
     cbar_label: str,
     cmap: str | plt.cm.ScalarMappable,
     log_scale: bool = False,
+    vmax: float | None = None,
 ) -> tuple[Figure, plt.Axes]:
     r"""Create a global map with sites sized and colored by a scalar metric.
 
@@ -185,6 +235,8 @@ def plot_hypoxia_map(
         - cbar_label : Colorbar label (supports LaTeX mathtext).
         - cmap       : Matplotlib colormap instance.
         - log_scale  : Apply log normalisation to dot sizes. Default False.
+        - vmax       : Upper bound for colormap and size normalisation. Values above
+                       this are clipped to the maximum size/color. Default None (data max).
 
     Returns:
         - fig, ax : Figure and Axes objects.
@@ -201,16 +253,25 @@ def plot_hypoxia_map(
     ax.add_feature(cfeature.COASTLINE, linewidth=LINE_WIDTH_THIN, edgecolor="0.4", zorder=2)
 
     vals = np.log1p(metric) if log_scale else metric.copy()
-    vmin, vmax = vals.min(), vals.max()
-    norm = (vals - vmin) / (vmax - vmin + 1e-10)
-    sizes = (MARKER_SIZE_SMALL + norm * (MARKER_SIZE_LARGE - MARKER_SIZE_SMALL)) ** 2
+    vmin_val = vals.min()
+    vmax_val = (
+        np.log1p(vmax)
+        if (log_scale and vmax is not None)
+        else (vmax if vmax is not None else vals.max())
+    )
+    vals_clipped = np.clip(vals, vmin_val, vmax_val)
+    norm_vals = (vals_clipped - vmin_val) / (vmax_val - vmin_val + 1e-10)
+    sizes = (MARKER_SIZE_SMALL + norm_vals * (MARKER_SIZE_LARGE - MARKER_SIZE_SMALL)) ** 2
 
+    color_vmax = vmax if vmax is not None else metric.max()
     sc = ax.scatter(
         site_lons,
         site_lats,
         s=sizes,
         c=metric,
         cmap=cmap,
+        vmin=metric.min(),
+        vmax=color_vmax,
         alpha=ALPHA_SCATTER,
         linewidths=0,
         transform=ccrs.PlateCarree(),

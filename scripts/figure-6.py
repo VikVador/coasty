@@ -1,34 +1,186 @@
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
+from matplotlib.lines import Line2D
 from pathlib import Path
 
 from coasty.config import PATH_DATASET
-from coasty.const import HYPOXIA_THRESHOLD
+from coasty.const import BIN_SIZE, HYPOXIA_THRESHOLD
 from coasty.visualize.const import (
+    ALPHA_SCATTER,
     CMAP_OXYGEN_SEQUENTIAL,
+    COLORBAR_FRACTION,
+    COLORBAR_PAD,
+    FIGURE_DPI,
     FIGURE_DPI_SAVE,
-    FIGURE_SIZE_WIDE,
+    FIGURE_SIZE_MAP,
+    FONT_SIZE_COLORBAR,
     FONT_SIZE_LEGEND,
     FONT_SIZE_TICK,
     FONT_SIZE_TITLE,
-    FONT_SIZE_X_LABEL,
-    FONT_SIZE_Y_LABEL,
-    LINE_WIDTH,
-    LINE_WIDTH_THICK,
+    LEGEND_FRAMEALPHA,
+    LINE_WIDTH_THIN,
+    MARKER_SIZE_SMALL,
 )
-from coasty.visualize.utils import (
-    compute_bottom_oxygen,
-    compute_site_median,
-    plot_hypoxia_map,
-)
+from coasty.visualize.utils import compute_site_median
 
-DECADES = [
-    (1960, "1960s", "steelblue"),
-    (1980, "1980s", "darkorange"),
-    (2010, "2010s", "crimson"),
-]
+# PROMPT
+figure_prompt = """
+
+    Show the spatial distribution of bottom-water oxygen across the globe, aggregated by
+    decade (1950s–2020s).  For each profile, keep only the single deepest observation as a
+    proxy for bottom oxygen.  Aggregate these deepest values per BIN_SIZE-km site using the
+    median, and plot one world map per decade.  Sites whose median oxygen falls below the
+    hypoxia threshold (HYPOXIA_THRESHOLD) are highlighted in red; all other sites use the
+    sequential oxygen colormap so the colorbar remains informative.
+
+"""
+
+HYPOXIC_COLOR = "red"
+
+
+def extract_deepest_oxygen(ds: xr.Dataset) -> np.ndarray:
+    r"""Return the dissolved oxygen value at the deepest observation of each profile.
+
+    Depths within a profile are sorted in ascending order (shallowest first), so the
+    deepest observation is always the last one, located at index profile_end - 1 (0-based).
+
+    Arguments:
+        - ds : Loaded coasty dataset.
+
+    Returns:
+        - deepest_o2 : Array of shape (n_profiles,) [µmol/kg].
+    """
+    dox2 = ds["DOX2"].values.astype(float)
+    ends = ds["profile_end"].values.astype(int)  # 1-based → last obs at ends[i] - 1
+    return dox2[ends - 1]
+
+
+def plot_oxygen_map(
+    median_o2: np.ndarray,
+    s_lat: np.ndarray,
+    s_lon: np.ndarray,
+    title: str,
+) -> plt.Figure:
+    r"""Create a world map of median deepest O2 with hypoxic sites highlighted in red.
+
+    Non-hypoxic sites are colored by the sequential oxygen colormap; hypoxic sites
+    (median O2 < HYPOXIA_THRESHOLD) are overplotted in red.  A dashed line on the
+    colorbar marks the hypoxia threshold.
+
+    Arguments:
+        - median_o2 : Median deepest O2 per site [µmol/kg].
+        - s_lat     : Site latitudes [°].
+        - s_lon     : Site longitudes [°].
+        - title     : Figure title (LaTeX mathtext).
+
+    Returns:
+        - fig : The created Figure.
+    """
+    fig = plt.figure(figsize=FIGURE_SIZE_MAP, dpi=FIGURE_DPI)
+    ax = fig.add_subplot(1, 1, 1, projection=ccrs.Robinson())
+    ax.set_global()
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+    ax.add_feature(cfeature.OCEAN, color="white", zorder=0)
+    ax.add_feature(cfeature.LAND, color="#e8e8e8", zorder=1)
+    ax.add_feature(cfeature.COASTLINE, linewidth=LINE_WIDTH_THIN, edgecolor="0.4", zorder=2)
+
+    cmap_obj = plt.get_cmap(CMAP_OXYGEN_SEQUENTIAL)
+    norm = mcolors.Normalize(vmin=np.nanmin(median_o2), vmax=np.nanmax(median_o2))
+
+    hypoxic = median_o2 < HYPOXIA_THRESHOLD
+    normal = ~hypoxic
+    marker_s = MARKER_SIZE_SMALL**2
+
+    # Normal sites — colored by oxygen concentration
+    if normal.sum() > 0:
+        ax.scatter(
+            s_lon[normal],
+            s_lat[normal],
+            s=marker_s,
+            c=median_o2[normal],
+            cmap=cmap_obj,
+            norm=norm,
+            alpha=ALPHA_SCATTER,
+            linewidths=0,
+            transform=ccrs.PlateCarree(),
+            zorder=3,
+        )
+
+    # Hypoxic sites — highlighted in red on top
+    if hypoxic.sum() > 0:
+        ax.scatter(
+            s_lon[hypoxic],
+            s_lat[hypoxic],
+            s=marker_s,
+            color=HYPOXIC_COLOR,
+            alpha=ALPHA_SCATTER,
+            linewidths=0,
+            transform=ccrs.PlateCarree(),
+            zorder=4,
+        )
+
+    # Colorbar (represents the full oxygen range)
+    sm = plt.cm.ScalarMappable(cmap=cmap_obj, norm=norm)
+    sm.set_array([])
+    cbar = fig.colorbar(
+        sm,
+        ax=ax,
+        orientation="vertical",
+        pad=COLORBAR_PAD,
+        fraction=COLORBAR_FRACTION,
+        shrink=0.8,
+    )
+    cbar.set_label(
+        r"Median deepest $O_2$ $[\mu\mathrm{mol\,kg}^{-1}]$",
+        fontsize=FONT_SIZE_COLORBAR,
+    )
+    cbar.ax.tick_params(labelsize=FONT_SIZE_TICK)
+
+    # Mark the hypoxia threshold on the colorbar
+    cbar.ax.axhline(
+        y=norm(HYPOXIA_THRESHOLD),
+        color="black",
+        linestyle="--",
+        linewidth=1.2,
+    )
+    cbar.ax.text(
+        1.15,
+        norm(HYPOXIA_THRESHOLD),
+        rf"${HYPOXIA_THRESHOLD:.0f}$",
+        va="center",
+        ha="left",
+        fontsize=FONT_SIZE_TICK - 1,
+        transform=cbar.ax.transAxes,
+    )
+
+    # Legend entry for hypoxic sites
+    ax.legend(
+        handles=[
+            Line2D(
+                [],
+                [],
+                marker="o",
+                linestyle="none",
+                markersize=MARKER_SIZE_SMALL,
+                markerfacecolor=HYPOXIC_COLOR,
+                markeredgecolor="none",
+                label=rf"Hypoxic ($< {HYPOXIA_THRESHOLD:.0f}\ \mu\mathrm{{mol\,kg}}^{{-1}}$)",
+            )
+        ],
+        fontsize=FONT_SIZE_LEGEND,
+        loc="lower left",
+        framealpha=LEGEND_FRAMEALPHA,
+    )
+
+    ax.set_title(title, fontsize=FONT_SIZE_TITLE)
+    fig.tight_layout(pad=1.5)
+    return fig
 
 
 if __name__ == "__main__":
@@ -41,77 +193,41 @@ if __name__ == "__main__":
     lat = ds["latitude"].values
     lon = ds["longitude"].values
     years = ds["obs_time"].dt.year.values
-    bottom_o2 = compute_bottom_oxygen(ds)
+    deepest_o2 = extract_deepest_oxygen(ds)
 
-    print(f"  Profiles with bottom O2: {np.isfinite(bottom_o2).sum():,} / {len(bottom_o2):,}")
+    valid_global = np.isfinite(deepest_o2)
+    print(f"  Profiles with valid deepest O2: {valid_global.sum():,} / {len(deepest_o2):,}")
 
+    decades = list(range(1950, 2030, 10))
     out_dir = Path(__file__).parent.parent / "plots" / "figure-6"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- Distribution figure ---
-    fig_dist, ax_dist = plt.subplots(figsize=FIGURE_SIZE_WIDE)
-
-    for decade, label, color in DECADES:
-        mask = (years >= decade) & (years < decade + 10) & np.isfinite(bottom_o2)
-        vals = bottom_o2[mask]
-
-        if len(vals) < 10:
-            print(f"  {label}: too few profiles, skipping")
-            continue
-
-        print(f"  {label}: {len(vals):,} profiles with bottom O2")
-
-        hist_counts, hist_edges = np.histogram(vals, bins=80, density=True)
-        hist_centers = 0.5 * (hist_edges[:-1] + hist_edges[1:])
-        ax_dist.plot(
-            hist_centers, hist_counts, color=color, linewidth=LINE_WIDTH_THICK, label=rf"${label}$"
-        )
-        ax_dist.fill_between(hist_centers, hist_counts, alpha=0.15, color=color)
-
-    ax_dist.axvline(
-        HYPOXIA_THRESHOLD,
-        color="black",
-        linestyle="--",
-        linewidth=LINE_WIDTH,
-        label=rf"Hypoxia threshold $({HYPOXIA_THRESHOLD:.0f}\ \mu$mol$/$kg$)$",
-    )
-    ax_dist.set_xlabel(r"Bottom $O_2$ $[\mu$mol$/$kg$]$", fontsize=FONT_SIZE_X_LABEL)
-    ax_dist.set_ylabel(r"Probability density", fontsize=FONT_SIZE_Y_LABEL)
-    ax_dist.set_title(
-        r"Distribution of bottom $O_2$ -- three representative decades", fontsize=FONT_SIZE_TITLE
-    )
-    ax_dist.legend(fontsize=FONT_SIZE_LEGEND)
-    ax_dist.tick_params(labelsize=FONT_SIZE_TICK)
-    fig_dist.tight_layout(pad=1.5)
-    fig_dist.savefig(
-        out_dir / "figure-6-distributions.pdf", dpi=FIGURE_DPI_SAVE, bbox_inches="tight"
-    )
-    plt.close(fig_dist)
-
-    # --- Maps: one per decade ---
     last_fig = None
-    for decade, label, _ in DECADES:
-        mask = (years >= decade) & (years < decade + 10) & np.isfinite(bottom_o2)
+
+    for decade in decades:
+        mask = (years >= decade) & (years < decade + 10) & valid_global
 
         if mask.sum() == 0:
+            print(f"  {decade}s: no data, skipping")
             continue
 
-        site_stats = compute_site_median(lat[mask], lon[mask], bottom_o2[mask])
-        valid = np.isfinite(site_stats["median"])
+        site_stats = compute_site_median(lat[mask], lon[mask], deepest_o2[mask], bin_size=BIN_SIZE)
+        valid_sites = np.isfinite(site_stats["median"])
 
-        print(f"  {label} map: {valid.sum()} sites with median bottom O2")
+        n_hypoxic = (site_stats["median"][valid_sites] < HYPOXIA_THRESHOLD).sum()
+        print(
+            f"  {decade}s: {mask.sum():,} profiles | "
+            f"{valid_sites.sum():,} sites | {n_hypoxic} hypoxic sites"
+        )
 
-        fig, _ = plot_hypoxia_map(
-            site_lats=site_stats["lat"][valid],
-            site_lons=site_stats["lon"][valid],
-            metric=site_stats["median"][valid],
-            title=rf"Median bottom $O_2$ -- ${label}$",
-            cbar_label=r"Median bottom $O_2$ $[\mu$mol$/$kg$]$",
-            cmap=CMAP_OXYGEN_SEQUENTIAL,
-            log_scale=False,
+        fig = plot_oxygen_map(
+            median_o2=site_stats["median"][valid_sites],
+            s_lat=site_stats["lat"][valid_sites],
+            s_lon=site_stats["lon"][valid_sites],
+            title=rf"Median deepest $O_2$ -- ${decade}$s",
         )
         fig.savefig(
-            out_dir / f"figure-6-map-{decade}.pdf",
+            out_dir / f"figure-6-{decade}.pdf",
             dpi=FIGURE_DPI_SAVE,
             bbox_inches="tight",
         )

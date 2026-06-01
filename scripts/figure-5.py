@@ -1,3 +1,4 @@
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
@@ -6,15 +7,70 @@ from pathlib import Path
 
 from coasty.config import PATH_DATASET
 from coasty.visualize.const import (
-    CMAP_HYPOXIA_COUNT,
     CMAP_HYPOXIA_PCT,
     FIGURE_DPI_SAVE,
+    FIGURE_SIZE_WIDE,
+    FONT_SIZE_COLORBAR,
+    FONT_SIZE_TICK,
+    FONT_SIZE_TITLE,
+    FONT_SIZE_X_LABEL,
+    FONT_SIZE_Y_LABEL,
 )
-from coasty.visualize.utils import (
-    compute_hypoxic_flag,
-    compute_site_stats,
-    plot_heatmap_2d,
-)
+from coasty.visualize.utils import compute_hypoxic_flag
+
+# PROMPT
+figure_prompt = """
+
+    Show the distribution of all ocean profiles and their hypoxic fraction across
+    geographic coordinates.  Produce two bar charts:
+      (a) total observations per 1° longitude bin,
+      (b) total observations per 1° latitude bin.
+    Each bar is colored by the local hypoxic percentage using a diverging colormap,
+    so both sampling effort and hypoxia intensity are visible in a single plot.
+
+"""
+
+
+def _colored_bar_chart(
+    ax: plt.Axes,
+    centers: np.ndarray,
+    total: np.ndarray,
+    pct: np.ndarray,
+    width: float,
+    cmap: mcolors.Colormap | str,
+    xlabel: str,
+    title: str,
+) -> plt.cm.ScalarMappable:
+    r"""Draw a bar chart whose bar colors encode hypoxic percentage.
+
+    Arguments:
+        - ax     : Axes to draw on.
+        - centers: Bin centre coordinates.
+        - total  : Total observation count per bin.
+        - pct    : Hypoxic percentage per bin [0–100].
+        - width  : Bar width.
+        - cmap   : Matplotlib colormap instance or name string.
+        - xlabel : X-axis label string.
+        - title  : Axes title string.
+
+    Returns:
+        - sm : ScalarMappable for building a colorbar.
+    """
+    norm = mcolors.Normalize(vmin=0, vmax=100)
+    if isinstance(cmap, str):
+        cmap = plt.get_cmap(cmap)
+    colors = cmap(norm(pct))
+
+    ax.bar(centers, total, width=width, color=colors, edgecolor="none")
+    ax.set_xlabel(xlabel, fontsize=FONT_SIZE_X_LABEL)
+    ax.set_ylabel(r"Number of profiles", fontsize=FONT_SIZE_Y_LABEL)
+    ax.set_title(title, fontsize=FONT_SIZE_TITLE)
+    ax.tick_params(labelsize=FONT_SIZE_TICK)
+
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    return sm
+
 
 if __name__ == "__main__":
     plt.rcParams["mathtext.fontset"] = "cm"
@@ -27,60 +83,65 @@ if __name__ == "__main__":
     lon = ds["longitude"].values
     is_hypoxic = compute_hypoxic_flag(ds)
 
-    # --- Step 1: compute site-level stats at 5 km resolution ---
-    stats = compute_site_stats(lat, lon, is_hypoxic)
-    show = stats["n_hypoxic"] > 0
-    s_lat = stats["lat"][show]
-    s_lon = stats["lon"][show]
-    s_count = stats["n_hypoxic"][show].astype(float)
-    s_pct = stats["pct_hypoxic"][show]
+    print(f"  Profiles: {len(lat):,}  |  Hypoxic: {is_hypoxic.sum():,}")
 
-    print(f"  Total hypoxic sites: {show.sum():,}")
-
-    # --- Step 2: bin hypoxic sites onto 5° × 5° grid ---
-    lat_edges = np.arange(-90, 91, 5)  # 37 edges → 36 cells
-    lon_edges = np.arange(-180, 181, 5)  # 73 edges → 72 cells
-    lat_centers = 0.5 * (lat_edges[:-1] + lat_edges[1:])
+    # --- Aggregate by 1° longitude bins ---
+    lon_edges = np.arange(-180, 181, 1)
     lon_centers = 0.5 * (lon_edges[:-1] + lon_edges[1:])
 
-    # Count of hypoxic sites per 5° cell
-    count_grid, _, _ = np.histogram2d(s_lat, s_lon, bins=[lat_edges, lon_edges])
+    total_lon, _ = np.histogram(lon, bins=lon_edges)
+    hypoxic_lon, _ = np.histogram(lon[is_hypoxic], bins=lon_edges)
+    pct_lon = np.where(total_lon > 0, 100.0 * hypoxic_lon / total_lon, 0.0)
 
-    # Mean hypoxic percentage per 5° cell
-    pct_sum_grid, _, _ = np.histogram2d(s_lat, s_lon, bins=[lat_edges, lon_edges], weights=s_pct)
-    count_safe = np.where(count_grid > 0, count_grid, 1)  # avoid div-by-zero in np.where
-    mean_pct_grid = np.where(count_grid > 0, pct_sum_grid / count_safe, np.nan)
+    # --- Aggregate by 1° latitude bins ---
+    lat_edges = np.arange(-90, 91, 1)
+    lat_centers = 0.5 * (lat_edges[:-1] + lat_edges[1:])
 
-    # Replace zeros in count with NaN for cleaner display
-    count_grid = np.where(count_grid > 0, count_grid, np.nan)
+    total_lat, _ = np.histogram(lat, bins=lat_edges)
+    hypoxic_lat, _ = np.histogram(lat[is_hypoxic], bins=lat_edges)
+    pct_lat = np.where(total_lat > 0, 100.0 * hypoxic_lat / total_lat, 0.0)
 
-    print(f"  5° grid: {(~np.isnan(count_grid)).sum()} non-empty cells")
+    print(f"  Non-empty lon bins: {(total_lon > 0).sum()} | lat bins: {(total_lat > 0).sum()}")
 
     out_dir = Path(__file__).parent.parent / "plots" / "figure-5"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- Count figure ---
-    fig, _ = plot_heatmap_2d(
-        lat_centers=lat_centers,
-        lon_centers=lon_centers,
-        values_2d=count_grid,
-        title=r"Number of hypoxic sites per $5°\times5°$ cell ($1950$--present)",
-        cbar_label=r"Number of hypoxic sites",
-        cmap=CMAP_HYPOXIA_COUNT,
+    # --- Longitude figure ---
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_WIDE)
+    sm = _colored_bar_chart(
+        ax=ax,
+        centers=lon_centers,
+        total=total_lon.astype(float),
+        pct=pct_lon,
+        width=1.0,
+        cmap=CMAP_HYPOXIA_PCT,
+        xlabel=r"Longitude $[°]$",
+        title=r"Observations per longitude bin ($1950$--present)",
     )
-    fig.savefig(out_dir / "figure-5-count.pdf", dpi=FIGURE_DPI_SAVE, bbox_inches="tight")
+    cbar = fig.colorbar(sm, ax=ax, pad=0.01)
+    cbar.set_label(r"Hypoxic percentage $[\%]$", fontsize=FONT_SIZE_COLORBAR)
+    cbar.ax.tick_params(labelsize=FONT_SIZE_TICK)
+    fig.tight_layout(pad=1.5)
+    fig.savefig(out_dir / "figure-5-lon.pdf", dpi=FIGURE_DPI_SAVE, bbox_inches="tight")
     plt.close(fig)
 
-    # --- Percentage figure ---
-    fig, _ = plot_heatmap_2d(
-        lat_centers=lat_centers,
-        lon_centers=lon_centers,
-        values_2d=mean_pct_grid,
-        title=r"Mean hypoxic percentage per $5°\times5°$ cell ($1950$--present)",
-        cbar_label=r"Mean hypoxic percentage $[\%]$",
+    # --- Latitude figure ---
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_WIDE)
+    sm = _colored_bar_chart(
+        ax=ax,
+        centers=lat_centers,
+        total=total_lat.astype(float),
+        pct=pct_lat,
+        width=1.0,
         cmap=CMAP_HYPOXIA_PCT,
+        xlabel=r"Latitude $[°]$",
+        title=r"Observations per latitude bin ($1950$--present)",
     )
-    fig.savefig(out_dir / "figure-5-pct.pdf", dpi=FIGURE_DPI_SAVE, bbox_inches="tight")
+    cbar = fig.colorbar(sm, ax=ax, pad=0.01)
+    cbar.set_label(r"Hypoxic percentage $[\%]$", fontsize=FONT_SIZE_COLORBAR)
+    cbar.ax.tick_params(labelsize=FONT_SIZE_TICK)
+    fig.tight_layout(pad=1.5)
+    fig.savefig(out_dir / "figure-5-lat.pdf", dpi=FIGURE_DPI_SAVE, bbox_inches="tight")
     plt.show()
 
     print(f"\nFigures saved to {out_dir}/")

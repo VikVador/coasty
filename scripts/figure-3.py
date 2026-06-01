@@ -9,6 +9,7 @@ from coasty.config import PATH_DATASET
 from coasty.visualize.const import (
     FIGURE_DPI_SAVE,
     FIGURE_SIZE_WIDE,
+    FONT_SIZE_LEGEND,
     FONT_SIZE_TICK,
     FONT_SIZE_TITLE,
     FONT_SIZE_X_LABEL,
@@ -19,6 +20,16 @@ from coasty.visualize.utils import (
     compute_hypoxic_flag,
     compute_site_stats,
 )
+
+# PROMPT
+figure_prompt = """
+
+    Show the annual time series of (a) the number of hypoxic sites and (b) the mean
+    hypoxic percentage from 1950 to present.  Include a 10-year rolling mean on each panel.
+    Mean hypoxic percentage is averaged over ALL sites (including non-hypoxic ones) to
+    avoid inflation from single-profile sites.
+
+"""
 
 if __name__ == "__main__":
     plt.rcParams["mathtext.fontset"] = "cm"
@@ -44,13 +55,13 @@ if __name__ == "__main__":
             mean_pct[i] = np.nan
             continue
 
-        stats = compute_site_stats(lat[mask], lon[mask], is_hypoxic[mask])
-        hypoxic = stats["n_hypoxic"] > 0
-        n_hypoxic_sites[i] = hypoxic.sum()
-        mean_pct[i] = stats["pct_hypoxic"][hypoxic].mean() if hypoxic.sum() > 0 else np.nan
+        stats = compute_site_stats(lat[mask], lon[mask], is_hypoxic[mask], bin_size=10)
+        n_hypoxic_sites[i] = (stats["n_hypoxic"] > 0).sum()
+        # Mean over ALL sites (zeros included) to avoid inflation from single-profile sites
+        mean_pct[i] = stats["pct_hypoxic"].mean()
 
         print(
-            f"  {yr}: {mask.sum():>6,} profiles | {hypoxic.sum():>4,} hypoxic sites | mean pct={mean_pct[i]:.1f}%"
+            f"  {yr}: {mask.sum():>6,} profiles | {n_hypoxic_sites[i]:>4.0f} hypoxic sites | mean pct={mean_pct[i]:.1f}%"
         )
 
     # --- 10-year rolling mean ---
@@ -71,7 +82,7 @@ if __name__ == "__main__":
     )
     ax1.set_ylabel(r"Number of hypoxic sites", fontsize=FONT_SIZE_Y_LABEL)
     ax1.tick_params(labelsize=FONT_SIZE_TICK)
-    ax1.legend(fontsize=FONT_SIZE_TICK)
+    ax1.legend(fontsize=FONT_SIZE_LEGEND, loc="upper right")
     ax1.set_title(
         r"Annual hypoxic site count and mean hypoxic percentage ($1950$--present)",
         fontsize=FONT_SIZE_TITLE,
@@ -89,7 +100,7 @@ if __name__ == "__main__":
     ax2.set_ylabel(r"Mean hypoxic percentage $[\%]$", fontsize=FONT_SIZE_Y_LABEL)
     ax2.set_xlabel(r"Year", fontsize=FONT_SIZE_X_LABEL)
     ax2.tick_params(labelsize=FONT_SIZE_TICK)
-    ax2.legend(fontsize=FONT_SIZE_TICK)
+    ax2.legend(fontsize=FONT_SIZE_LEGEND, loc="upper right")
 
     fig.tight_layout(pad=1.5)
 

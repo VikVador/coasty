@@ -22,13 +22,3 @@ You must **read and strictly adhere to the guidelines** describe in the followin
 #
 # YOUR TASKS
 #
-
-1. In `scripts/`, you will find a python file `figure-X.py` (the precise file will be given by user in the prompt).
-
-2. At the top of this file, you will find a prompt describing the figure you need to produce **FOLLOWING THE GUIDELINES**.
-
-3. Write an efficient and well-structured plan to generate the figure and execute it.
-
-4. Update `notebook/coasty.ipynb` by adding a new cell to execute the figure script you just created.
-
-5. Make sure to follow the guidelines and that your code works by checking the generated figure.

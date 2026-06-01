@@ -20,20 +20,18 @@ from coasty.visualize.utils import (
     compute_site_stats,
 )
 
-MONTH_LABELS = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-]
+# PROMPT
+figure_prompt = """
+
+    Show the climatological seasonal cycle of ocean sampling for the Northern and Southern
+    Hemisphere separately.  For each hemisphere and each month show:
+      (a) total number of observed profiles (stacked bars: non-hypoxic + hypoxic),
+      (b) mean hypoxic percentage on a secondary y-axis (0–100 %).
+    Mean hypoxic percentage is computed over ALL sites to avoid bias.
+
+"""
+
+MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
 if __name__ == "__main__":
@@ -57,56 +55,80 @@ if __name__ == "__main__":
         2, 1, figsize=(FIGURE_SIZE_WIDE[0], FIGURE_SIZE_WIDE[1] * 2), sharex=True
     )
 
+    # Compute y-limits for profile counts so both panels share the same scale
+    all_totals = []
+    for hemi_mask in hemi_masks.values():
+        for m in range(1, 13):
+            all_totals.append(int((hemi_mask & (months == m)).sum()))
+    y_max_profiles = max(all_totals) * 1.15
+
+    months_x = np.arange(1, 13)
+
     for ax, (hemi_label, hemi_mask) in zip(axes, hemi_masks.items()):
-        n_sites_per_month = np.zeros(12)
-        mean_pct_per_month = np.zeros(12)
+        n_obs_per_month = np.zeros(12, dtype=float)
+        n_hypoxic_per_month = np.zeros(12, dtype=float)
+        mean_pct_per_month = np.zeros(12, dtype=float)
 
         for m in range(1, 13):
             mask = hemi_mask & (months == m)
-            if mask.sum() == 0:
-                n_sites_per_month[m - 1] = 0
-                mean_pct_per_month[m - 1] = 0
-                continue
+            total = int(mask.sum())
+            hypoxic_count = int(is_hypoxic[mask].sum())
 
-            stats = compute_site_stats(lat[mask], lon[mask], is_hypoxic[mask])
-            hypoxic = stats["n_hypoxic"] > 0
-            n_sites_per_month[m - 1] = hypoxic.sum()
-            mean_pct_per_month[m - 1] = (
-                stats["pct_hypoxic"][hypoxic].mean() if hypoxic.sum() > 0 else 0.0
-            )
+            n_obs_per_month[m - 1] = total
+            n_hypoxic_per_month[m - 1] = hypoxic_count
+
+            if total > 0:
+                stats = compute_site_stats(lat[mask], lon[mask], is_hypoxic[mask], bin_size=10)
+                # Mean over ALL sites to avoid inflation from single-profile sites
+                mean_pct_per_month[m - 1] = stats["pct_hypoxic"].mean()
+            else:
+                mean_pct_per_month[m - 1] = 0.0
 
             print(
-                f"  {hemi_label[:1]}H  month={m:02d}: {mask.sum():>6,} profiles | {hypoxic.sum():>4,} hypoxic sites"
+                f"  {hemi_label[:1]}H  month={m:02d}: {total:>6,} profiles | "
+                f"{hypoxic_count:>5,} hypoxic | mean pct={mean_pct_per_month[m - 1]:.1f}%"
             )
 
-        months_x = np.arange(1, 13)
+        n_non_hypoxic = n_obs_per_month - n_hypoxic_per_month
 
-        # Bar chart for site count
-        ax.bar(months_x, n_sites_per_month, color="steelblue", alpha=0.6, label=r"Hypoxic sites")
-        ax.set_ylabel(r"Number of hypoxic sites", fontsize=FONT_SIZE_Y_LABEL, color="steelblue")
-        ax.tick_params(axis="y", labelcolor="steelblue", labelsize=FONT_SIZE_TICK)
+        # Stacked bars: non-hypoxic base + hypoxic on top
+        ax.bar(
+            months_x, n_non_hypoxic, color="steelblue", alpha=0.7, label=r"Non-hypoxic profiles"
+        )
+        ax.bar(
+            months_x,
+            n_hypoxic_per_month,
+            bottom=n_non_hypoxic,
+            color="darkorange",
+            alpha=0.85,
+            label=r"Hypoxic profiles",
+        )
+        ax.set_ylabel(r"Number of observed profiles", fontsize=FONT_SIZE_Y_LABEL, color="black")
+        ax.tick_params(axis="y", labelsize=FONT_SIZE_TICK)
+        ax.set_ylim(0, y_max_profiles)
 
-        # Secondary y-axis for mean pct
+        # Secondary y-axis for mean hypoxic %
         ax2 = ax.twinx()
         ax2.plot(
             months_x,
             mean_pct_per_month,
-            color="darkorange",
+            color="crimson",
             linewidth=LINE_WIDTH_THICK,
             marker="o",
             markersize=5,
             label=r"Mean hypoxic $[\%]$",
         )
         ax2.set_ylabel(
-            r"Mean hypoxic percentage $[\%]$", fontsize=FONT_SIZE_Y_LABEL, color="darkorange"
+            r"Mean hypoxic percentage $[\%]$", fontsize=FONT_SIZE_Y_LABEL, color="crimson"
         )
-        ax2.tick_params(axis="y", labelcolor="darkorange", labelsize=FONT_SIZE_TICK)
+        ax2.tick_params(axis="y", labelcolor="crimson", labelsize=FONT_SIZE_TICK)
+        ax2.set_ylim(0, 100)
 
         ax.set_title(rf"{hemi_label} -- climatological seasonal cycle", fontsize=FONT_SIZE_TITLE)
         ax.set_xticks(months_x)
         ax.set_xticklabels(MONTH_LABELS, fontsize=FONT_SIZE_TICK)
 
-        # Combined legend
+        # Combined legend in upper right
         lines1, labels1 = ax.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax.legend(lines1 + lines2, labels1 + labels2, fontsize=FONT_SIZE_LEGEND, loc="upper right")

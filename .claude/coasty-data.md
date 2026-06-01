@@ -66,9 +66,9 @@ The variables can be defined as:
   - `bathymetry`                   : Seafloor depth at the profile's location
   - `profile_start` / `profile_end`: Indices into the `values`-dimension arrays marking where each profile begins and ends
   - `datatype`                     : Instrument used to collect the profile
-    - `1` → Water bottle
-    - `2` → Argo float
-    - `3` → CTD sensor
+    - `BO` → Water bottle
+    - `PF` → Argo float
+    - `CT` → CTD sensor
 
   NOTE: Indices are **1-based** (not 0-based). Adjust accordingly when slicing in Python.
 

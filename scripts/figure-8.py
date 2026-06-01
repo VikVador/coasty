@@ -13,8 +13,17 @@ from coasty.visualize.const import (
     FONT_SIZE_TITLE,
     FONT_SIZE_X_LABEL,
     FONT_SIZE_Y_LABEL,
-    LINE_WIDTH_THICK,
 )
+
+# PROMPT
+figure_prompt = """
+
+    Show the annual sampling effort broken down by instrument type (Water bottle, Argo float,
+    CTD) from 1950 to present.  Panel (a) shows stacked annual profile counts per instrument.
+    Panel (b) shows the cumulative total number of profiles over time.
+    Instrument types are now stored as string codes (BO, PF, CT) in the dataset.
+
+"""
 
 DATATYPE_LABELS = {
     1: "Water bottle",
@@ -42,47 +51,34 @@ if __name__ == "__main__":
 
     # --- Count profiles per year × datatype ---
     counts = {}
-    for dt in DATATYPE_LABELS:
-        dt_mask = datatypes == dt
-        counts[dt] = np.array([(years[dt_mask] == yr).sum() for yr in all_years])
-        print(f"  datatype {dt}: {dt_mask.sum():,} profiles total")
-
-    total_per_year = sum(counts.values())
-    cumulative = np.cumsum(total_per_year)
+    for code in DATATYPE_LABELS:
+        dt_mask = datatypes == code
+        counts[code] = np.array([(years[dt_mask] == yr).sum() for yr in all_years])
+        print(f"  datatype {code}: {dt_mask.sum():,} profiles total")
 
     # --- Plot ---
-    fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(FIGURE_SIZE_WIDE[0], FIGURE_SIZE_WIDE[1] * 2), sharex=True
-    )
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_WIDE)
 
-    # Panel (a) — stacked bars
     bottom = np.zeros(len(all_years))
-    for dt in DATATYPE_LABELS:
-        ax1.bar(
+    for code in DATATYPE_LABELS:
+        ax.bar(
             all_years,
-            counts[dt],
+            counts[code],
             bottom=bottom,
-            color=DATATYPE_COLORS[dt],
-            label=DATATYPE_LABELS[dt],
+            color=DATATYPE_COLORS[code],
+            label=DATATYPE_LABELS[code],
             alpha=0.85,
         )
-        bottom += counts[dt]
+        bottom += counts[code]
 
-    ax1.set_ylabel(r"Number of profiles", fontsize=FONT_SIZE_Y_LABEL)
-    ax1.set_title(
+    ax.set_ylabel(r"Number of profiles", fontsize=FONT_SIZE_Y_LABEL)
+    ax.set_xlabel(r"Year", fontsize=FONT_SIZE_X_LABEL)
+    ax.set_title(
         r"Sampling effort -- annual profile count by instrument type ($1950$--present)",
         fontsize=FONT_SIZE_TITLE,
     )
-    ax1.legend(fontsize=FONT_SIZE_LEGEND)
-    ax1.tick_params(labelsize=FONT_SIZE_TICK)
-
-    # Panel (b) — cumulative
-    ax2.plot(all_years, cumulative, color="navy", linewidth=LINE_WIDTH_THICK)
-    ax2.fill_between(all_years, cumulative, alpha=0.15, color="navy")
-    ax2.set_ylabel(r"Cumulative profiles", fontsize=FONT_SIZE_Y_LABEL)
-    ax2.set_xlabel(r"Year", fontsize=FONT_SIZE_X_LABEL)
-    ax2.tick_params(labelsize=FONT_SIZE_TICK)
-    ax2.set_title(r"Cumulative number of profiles", fontsize=FONT_SIZE_TITLE)
+    ax.legend(fontsize=FONT_SIZE_LEGEND)
+    ax.tick_params(labelsize=FONT_SIZE_TICK)
 
     fig.tight_layout(pad=1.5)
 
