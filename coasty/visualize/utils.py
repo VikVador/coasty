@@ -6,8 +6,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
+from cartopy.mpl.geoaxes import GeoAxes
+from matplotlib.colors import Colormap
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from typing import cast
 
 from coasty.const import (
     BIN_SIZE,
@@ -65,8 +68,7 @@ def compute_site_stats(
         - lat        : Profile latitudes [°].
         - lon        : Profile longitudes [°].
         - is_hypoxic : Boolean hypoxic flag per profile.
-        - bin_size   : Binning resolution [km]. Default BIN_SIZE (5 km ≈ 0.045°).
-
+        - bin_size   : Binning resolution [km]. 
     Returns:
         - stats : Dict with keys 'lat', 'lon', 'total', 'n_hypoxic', 'pct_hypoxic'.
     """
@@ -170,7 +172,7 @@ def compute_bottom_oxygen(ds: xr.Dataset) -> np.ndarray:
 
 
 def add_size_legend(
-    ax: plt.Axes,
+    ax: GeoAxes,
     thresholds: list[float],
     metric: np.ndarray,
     log_scale: bool = True,
@@ -221,10 +223,11 @@ def plot_hypoxia_map(
     metric: np.ndarray,
     title: str,
     cbar_label: str,
-    cmap: str | plt.cm.ScalarMappable,
+    cmap: str | Colormap,
     log_scale: bool = False,
     vmax: float | None = None,
-) -> tuple[Figure, plt.Axes]:
+    scale_marker_size: bool = True,
+) -> tuple[Figure, GeoAxes]:
     r"""Create a global map with sites sized and colored by a scalar metric.
 
     Arguments:
@@ -237,12 +240,14 @@ def plot_hypoxia_map(
         - log_scale  : Apply log normalisation to dot sizes. Default False.
         - vmax       : Upper bound for colormap and size normalisation. Values above
                        this are clipped to the maximum size/color. Default None (data max).
+        - scale_marker_size : If True, marker size encodes metric magnitude.
+                      If False, all markers use a fixed size.
 
     Returns:
         - fig, ax : Figure and Axes objects.
     """
     fig = plt.figure(figsize=FIGURE_SIZE_MAP, dpi=FIGURE_DPI)
-    ax = fig.add_subplot(1, 1, 1, projection=ccrs.Robinson())
+    ax = cast(GeoAxes, fig.add_subplot(1, 1, 1, projection=ccrs.Robinson()))
     ax.set_global()
 
     fig.patch.set_facecolor("white")
@@ -252,16 +257,19 @@ def plot_hypoxia_map(
     ax.add_feature(cfeature.LAND, color="#e8e8e8", zorder=1)
     ax.add_feature(cfeature.COASTLINE, linewidth=LINE_WIDTH_THIN, edgecolor="0.4", zorder=2)
 
-    vals = np.log1p(metric) if log_scale else metric.copy()
-    vmin_val = vals.min()
-    vmax_val = (
-        np.log1p(vmax)
-        if (log_scale and vmax is not None)
-        else (vmax if vmax is not None else vals.max())
-    )
-    vals_clipped = np.clip(vals, vmin_val, vmax_val)
-    norm_vals = (vals_clipped - vmin_val) / (vmax_val - vmin_val + 1e-10)
-    sizes = (MARKER_SIZE_SMALL + norm_vals * (MARKER_SIZE_LARGE - MARKER_SIZE_SMALL)) ** 2
+    if scale_marker_size:
+        vals = np.log1p(metric) if log_scale else metric.copy()
+        vmin_val = vals.min()
+        vmax_val = (
+            np.log1p(vmax)
+            if (log_scale and vmax is not None)
+            else (vmax if vmax is not None else vals.max())
+        )
+        vals_clipped = np.clip(vals, vmin_val, vmax_val)
+        norm_vals = (vals_clipped - vmin_val) / (vmax_val - vmin_val + 1e-10)
+        sizes = (MARKER_SIZE_SMALL + norm_vals * (MARKER_SIZE_LARGE - MARKER_SIZE_SMALL)) ** 2
+    else:
+        sizes = np.full(metric.shape, MARKER_SIZE_SMALL**2, dtype=float)
 
     color_vmax = vmax if vmax is not None else metric.max()
     sc = ax.scatter(
@@ -301,8 +309,8 @@ def plot_heatmap_2d(
     values_2d: np.ndarray,
     title: str,
     cbar_label: str,
-    cmap: str | plt.cm.ScalarMappable,
-) -> tuple[Figure, plt.Axes]:
+    cmap: str | Colormap,
+) -> tuple[Figure, GeoAxes]:
     r"""Create a global map with a regular lat/lon grid colored by 2-D values.
 
     Arguments:
@@ -317,7 +325,7 @@ def plot_heatmap_2d(
         - fig, ax : Figure and Axes objects.
     """
     fig = plt.figure(figsize=FIGURE_SIZE_MAP, dpi=FIGURE_DPI)
-    ax = fig.add_subplot(1, 1, 1, projection=ccrs.Robinson())
+    ax = cast(GeoAxes, fig.add_subplot(1, 1, 1, projection=ccrs.Robinson()))
     ax.set_global()
 
     fig.patch.set_facecolor("white")

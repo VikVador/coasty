@@ -47,7 +47,7 @@ if __name__ == "__main__":
     is_hypoxic = compute_hypoxic_flag(ds)
 
     hemi_masks = {
-        "Northern Hemisphere": lat > 0,
+        "Northern Hemisphere": lat >= 0,
         "Southern Hemisphere": lat < 0,
     }
 

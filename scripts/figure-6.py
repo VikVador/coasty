@@ -1,31 +1,14 @@
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
-from matplotlib.lines import Line2D
 from pathlib import Path
 
 from coasty.config import PATH_DATASET
 from coasty.const import BIN_SIZE, HYPOXIA_THRESHOLD
-from coasty.visualize.const import (
-    ALPHA_SCATTER,
-    CMAP_OXYGEN_SEQUENTIAL,
-    COLORBAR_FRACTION,
-    COLORBAR_PAD,
-    FIGURE_DPI,
-    FIGURE_DPI_SAVE,
-    FIGURE_SIZE_MAP,
-    FONT_SIZE_COLORBAR,
-    FONT_SIZE_LEGEND,
-    FONT_SIZE_TICK,
-    FONT_SIZE_TITLE,
-    LEGEND_FRAMEALPHA,
-    LINE_WIDTH_THIN,
-    MARKER_SIZE_SMALL,
-)
+from coasty.visualize.const import FIGURE_DPI_SAVE
+
+from coasty.visualize.hypoxia_maps import plot_oxygen_map
 from coasty.visualize.utils import compute_site_median
 
 # PROMPT
@@ -39,8 +22,6 @@ figure_prompt = """
     sequential oxygen colormap so the colorbar remains informative.
 
 """
-
-HYPOXIC_COLOR = "red"
 
 
 def extract_deepest_oxygen(ds: xr.Dataset) -> np.ndarray:
@@ -58,129 +39,6 @@ def extract_deepest_oxygen(ds: xr.Dataset) -> np.ndarray:
     dox2 = ds["DOX2"].values.astype(float)
     ends = ds["profile_end"].values.astype(int)  # 1-based → last obs at ends[i] - 1
     return dox2[ends - 1]
-
-
-def plot_oxygen_map(
-    median_o2: np.ndarray,
-    s_lat: np.ndarray,
-    s_lon: np.ndarray,
-    title: str,
-) -> plt.Figure:
-    r"""Create a world map of median deepest O2 with hypoxic sites highlighted in red.
-
-    Non-hypoxic sites are colored by the sequential oxygen colormap; hypoxic sites
-    (median O2 < HYPOXIA_THRESHOLD) are overplotted in red.  A dashed line on the
-    colorbar marks the hypoxia threshold.
-
-    Arguments:
-        - median_o2 : Median deepest O2 per site [µmol/kg].
-        - s_lat     : Site latitudes [°].
-        - s_lon     : Site longitudes [°].
-        - title     : Figure title (LaTeX mathtext).
-
-    Returns:
-        - fig : The created Figure.
-    """
-    fig = plt.figure(figsize=FIGURE_SIZE_MAP, dpi=FIGURE_DPI)
-    ax = fig.add_subplot(1, 1, 1, projection=ccrs.Robinson())
-    ax.set_global()
-    fig.patch.set_facecolor("white")
-    ax.set_facecolor("white")
-    ax.add_feature(cfeature.OCEAN, color="white", zorder=0)
-    ax.add_feature(cfeature.LAND, color="#e8e8e8", zorder=1)
-    ax.add_feature(cfeature.COASTLINE, linewidth=LINE_WIDTH_THIN, edgecolor="0.4", zorder=2)
-
-    cmap_obj = plt.get_cmap(CMAP_OXYGEN_SEQUENTIAL)
-    norm = mcolors.Normalize(vmin=np.nanmin(median_o2), vmax=np.nanmax(median_o2))
-
-    hypoxic = median_o2 < HYPOXIA_THRESHOLD
-    normal = ~hypoxic
-    marker_s = MARKER_SIZE_SMALL**2
-
-    # Normal sites — colored by oxygen concentration
-    if normal.sum() > 0:
-        ax.scatter(
-            s_lon[normal],
-            s_lat[normal],
-            s=marker_s,
-            c=median_o2[normal],
-            cmap=cmap_obj,
-            norm=norm,
-            alpha=ALPHA_SCATTER,
-            linewidths=0,
-            transform=ccrs.PlateCarree(),
-            zorder=3,
-        )
-
-    # Hypoxic sites — highlighted in red on top
-    if hypoxic.sum() > 0:
-        ax.scatter(
-            s_lon[hypoxic],
-            s_lat[hypoxic],
-            s=marker_s,
-            color=HYPOXIC_COLOR,
-            alpha=ALPHA_SCATTER,
-            linewidths=0,
-            transform=ccrs.PlateCarree(),
-            zorder=4,
-        )
-
-    # Colorbar (represents the full oxygen range)
-    sm = plt.cm.ScalarMappable(cmap=cmap_obj, norm=norm)
-    sm.set_array([])
-    cbar = fig.colorbar(
-        sm,
-        ax=ax,
-        orientation="vertical",
-        pad=COLORBAR_PAD,
-        fraction=COLORBAR_FRACTION,
-        shrink=0.8,
-    )
-    cbar.set_label(
-        r"Median deepest $O_2$ $[\mu\mathrm{mol\,kg}^{-1}]$",
-        fontsize=FONT_SIZE_COLORBAR,
-    )
-    cbar.ax.tick_params(labelsize=FONT_SIZE_TICK)
-
-    # Mark the hypoxia threshold on the colorbar
-    cbar.ax.axhline(
-        y=norm(HYPOXIA_THRESHOLD),
-        color="black",
-        linestyle="--",
-        linewidth=1.2,
-    )
-    cbar.ax.text(
-        1.15,
-        norm(HYPOXIA_THRESHOLD),
-        rf"${HYPOXIA_THRESHOLD:.0f}$",
-        va="center",
-        ha="left",
-        fontsize=FONT_SIZE_TICK - 1,
-        transform=cbar.ax.transAxes,
-    )
-
-    # Legend entry for hypoxic sites
-    ax.legend(
-        handles=[
-            Line2D(
-                [],
-                [],
-                marker="o",
-                linestyle="none",
-                markersize=MARKER_SIZE_SMALL,
-                markerfacecolor=HYPOXIC_COLOR,
-                markeredgecolor="none",
-                label=rf"Hypoxic ($< {HYPOXIA_THRESHOLD:.0f}\ \mu\mathrm{{mol\,kg}}^{{-1}}$)",
-            )
-        ],
-        fontsize=FONT_SIZE_LEGEND,
-        loc="lower left",
-        framealpha=LEGEND_FRAMEALPHA,
-    )
-
-    ax.set_title(title, fontsize=FONT_SIZE_TITLE)
-    fig.tight_layout(pad=1.5)
-    return fig
 
 
 if __name__ == "__main__":

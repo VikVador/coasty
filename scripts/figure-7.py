@@ -7,7 +7,7 @@ from pathlib import Path
 from coasty.config import PATH_DATASET
 from coasty.const import BIN_SIZE
 from coasty.visualize.const import CMAP_SAMPLING_COUNT, FIGURE_DPI_SAVE
-from coasty.visualize.utils import add_size_legend, compute_site_stats, plot_hypoxia_map
+from coasty.visualize.utils import compute_site_stats, plot_hypoxia_map
 
 # PROMPT
 figure_prompt = """
@@ -20,7 +20,7 @@ figure_prompt = """
 """
 
 # Configurable circle-size thresholds for the legend
-CIRCLE_THRESHOLDS = [10, 100, 1000]
+#CIRCLE_THRESHOLDS = [10, 100, 1000]
 
 if __name__ == "__main__":
     plt.rcParams["mathtext.fontset"] = "cm"
@@ -63,7 +63,7 @@ if __name__ == "__main__":
             f"{len(total):>6,} sites | max count={total.max():.0f}"
         )
 
-        color_vmax = 1000 if decade is None else 100
+        color_vmax = 100 if decade is None else 50
         fig, ax = plot_hypoxia_map(
             site_lats=stats["lat"],
             site_lons=stats["lon"],
@@ -71,10 +71,11 @@ if __name__ == "__main__":
             title=rf"Sampling effort -- {title_suffix}",
             cbar_label=r"Number of profiles",
             cmap=CMAP_SAMPLING_COUNT,
-            log_scale=True,
+            log_scale=False,
             vmax=color_vmax,
+            scale_marker_size=False,
         )
-        add_size_legend(ax, CIRCLE_THRESHOLDS, total, log_scale=True)
+        #add_size_legend(ax, CIRCLE_THRESHOLDS, total, log_scale=True)
 
         fig.savefig(
             out_dir / f"figure-7-{period_name}.pdf",

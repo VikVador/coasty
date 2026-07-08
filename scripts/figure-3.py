@@ -6,6 +6,7 @@ import xarray as xr
 from pathlib import Path
 
 from coasty.config import PATH_DATASET
+from coasty.const import MIN_CONSIDERED_YEAR, MAX_CONSIDERED_YEAR
 from coasty.visualize.const import (
     FIGURE_DPI_SAVE,
     FIGURE_SIZE_WIDE,
@@ -44,7 +45,7 @@ if __name__ == "__main__":
     is_hypoxic = compute_hypoxic_flag(ds)
 
     # --- Compute annual statistics ---
-    all_years = np.arange(1950, years.max() + 1)
+    all_years = np.arange(MIN_CONSIDERED_YEAR, MAX_CONSIDERED_YEAR + 1)
     n_hypoxic_sites = np.zeros(len(all_years), dtype=float)
     mean_pct = np.zeros(len(all_years), dtype=float)
 
@@ -82,9 +83,9 @@ if __name__ == "__main__":
     )
     ax1.set_ylabel(r"Number of hypoxic sites", fontsize=FONT_SIZE_Y_LABEL)
     ax1.tick_params(labelsize=FONT_SIZE_TICK)
-    ax1.legend(fontsize=FONT_SIZE_LEGEND, loc="upper right")
+    ax1.legend(fontsize=FONT_SIZE_LEGEND, loc="upper left")
     ax1.set_title(
-        r"Annual hypoxic site count and mean hypoxic percentage ($1950$--present)",
+        rf"Annual hypoxic site count and mean hypoxic percentage (${MIN_CONSIDERED_YEAR}$--${MAX_CONSIDERED_YEAR}$)",
         fontsize=FONT_SIZE_TITLE,
     )
 
@@ -100,7 +101,7 @@ if __name__ == "__main__":
     ax2.set_ylabel(r"Mean hypoxic percentage $[\%]$", fontsize=FONT_SIZE_Y_LABEL)
     ax2.set_xlabel(r"Year", fontsize=FONT_SIZE_X_LABEL)
     ax2.tick_params(labelsize=FONT_SIZE_TICK)
-    ax2.legend(fontsize=FONT_SIZE_LEGEND, loc="upper right")
+    ax2.legend(fontsize=FONT_SIZE_LEGEND, loc="upper left")
 
     fig.tight_layout(pad=1.5)
 

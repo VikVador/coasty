@@ -26,14 +26,14 @@ figure_prompt = """
 """
 
 DATATYPE_LABELS = {
-    1: "Water bottle",
-    2: "Argo float",
-    3: "CTD",
+    "BO": "Water bottle",
+    "PF": "Argo float",
+    "CT": "CTD",
 }
 DATATYPE_COLORS = {
-    1: "steelblue",
-    2: "darkorange",
-    3: "seagreen",
+    "BO": "steelblue",
+    "PF": "darkorange",
+    "CT": "seagreen",
 }
 
 
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     ds = xr.open_dataset(PATH_DATASET, engine="netcdf4")
 
     years = ds["obs_time"].dt.year.values
-    datatypes = ds["datatype"].values.astype(int)
+    datatypes = np.char.upper(np.char.strip(ds["datatype"].values.astype(str)))
 
     all_years = np.arange(years.min(), years.max() + 1)
 

@@ -5,8 +5,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.lines import Line2D
 from pathlib import Path
+from typing import cast
 
 from coasty.config import PATH_DATASET
 from coasty.const import KM_PER_DEG
@@ -31,7 +33,7 @@ figure_prompt = """
     For each site and decade, count how many of the four meteorological seasons
     (Spring, Summer, Autumn, Winter) have at least one observed profile.
     Color each site by that count (1–4) using four discrete colors.
-    Repeat for two spatial aggregation radii: 5 km and 10 km.
+    Repeat for two spatial aggregation radii: 5 km and 10 km (currently actually it's 50 and 200).
     Produce one world map per (bin_km, decade) combination.
 
 """
@@ -109,16 +111,19 @@ if __name__ == "__main__":
             s_lon_idx = unique_site_ids % n_lon
             s_lat = s_lat_idx * bin_deg - 90.0
             s_lon = s_lon_idx * bin_deg - 180.0
-            s_counts = season_counts.values
+            s_counts = np.asarray(season_counts.values, dtype=int)
+
+            n_four_season = int(np.count_nonzero(s_counts == 4))
+            pct_four_season = 100.0 * n_four_season / max(len(s_counts), 1)
 
             print(
                 f"  {bin_km} km, {decade}s: {len(s_lat):,} sites | "
-                f"4-season: {(s_counts == 4).sum():,} ({100 * (s_counts == 4).mean():.1f}%)"
+                f"4-season: {n_four_season:,} ({pct_four_season:.1f}%)"
             )
 
             # --- Build Cartopy map ---
             fig = plt.figure(figsize=FIGURE_SIZE_MAP, dpi=FIGURE_DPI)
-            ax = fig.add_subplot(1, 1, 1, projection=ccrs.Robinson())
+            ax = cast(GeoAxes, fig.add_subplot(1, 1, 1, projection=ccrs.Robinson()))
             ax.set_global()
             fig.patch.set_facecolor("white")
             ax.set_facecolor("white")
@@ -132,7 +137,7 @@ if __name__ == "__main__":
             legend_handles = []
             for n_s in range(1, 5):
                 sel = s_counts == n_s
-                if sel.sum() == 0:
+                if np.count_nonzero(sel) == 0:
                     continue
                 ax.scatter(
                     s_lon[sel],

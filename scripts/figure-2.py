@@ -1,27 +1,22 @@
 import cartopy.crs as ccrs
-import cartopy.feature as cfeature
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
+from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.lines import Line2D
 from pathlib import Path
 
 from coasty.config import PATH_DATASET, PATH_DATASET_DIAZ
-from coasty.const import BIN_SIZE, KM_PER_DEG
+from coasty.const import (BIN_SIZE, 
+                          KM_PER_DEG,
+                          MIN_CONSIDERED_YEAR,
+                          MAX_CONSIDERED_YEAR)
 from coasty.visualize.const import (
-    ALPHA_SCATTER,
     CMAP_HYPOXIA_PCT,
-    DIAZ_COLOR_PERSISTENT,
-    FIGURE_DPI,
     FIGURE_DPI_SAVE,
-    FIGURE_SIZE_MAP,
-    FONT_SIZE_LEGEND,
-    FONT_SIZE_TICK,
-    FONT_SIZE_TITLE,
-    LEGEND_FRAMEALPHA,
-    LINE_WIDTH_THIN,
 )
+from coasty.visualize.hypoxia_maps import PCT_THRESHOLDS, make_category_map, new_map_axes
 from coasty.visualize.utils import compute_hypoxic_flag, compute_site_stats
 
 # PROMPT
@@ -37,30 +32,53 @@ figure_prompt = """
 
 """
 
-# ── Configurable parameters ──────────────────────────────────────────────────
-# Upper bounds for each circle-size bin [hypoxic percentage, 0–100].
-# A final "≥ last threshold" bin is added automatically.
-CIRCLE_THRESHOLDS = [10, 25, 50, 75]
-
-# Marker area [points²] for each bin (must have len(CIRCLE_THRESHOLDS) + 1 entries).
-CIRCLE_SIZES_PT2 = [20, 40, 60, 80, 100]
-
+# ---------- Configurable parameters ----------
 # Diaz overlay mode:
 #   False → one triangle marker per Diaz site (raw, individual).
 #   True  → one triangle per BIN_SIZE-km cell that contains ≥1 Diaz site (aggregated).
 AGGREGATE_DIAZ = True
 
 # Diaz triangle appearance.
-DIAZ_COLOR = DIAZ_COLOR_PERSISTENT
 DIAZ_MARKER_SIZE_PT2 = 40  # marker area [points²]
-# ─────────────────────────────────────────────────────────────────────────────
+DIAZ_COLOR_FALLBACK = "red"
+
+
+def _hypoxic_pct_colors() -> list:
+    r"""Return the same color bins used for hypoxic-percentage circles."""
+    n_cats = len(PCT_THRESHOLDS) + 1
+    cmap_obj = plt.get_cmap(CMAP_HYPOXIA_PCT)
+    return [cmap_obj(i / max(n_cats - 1, 1)) for i in range(n_cats)]
+
+
+def _diaz_category_to_bin(hypoxia_current: str) -> int:
+    r"""Map Diaz hypoxia_current category to the hypoxic-percentage bin index.
+
+    Mapping requested:
+      Diel -> <10
+      Episodic -> 10--25
+      Seasonal/Seasonl -> 25--50
+      Periodic -> 50--75
+      Persistent -> >=75
+      Other/unknown -> fallback red
+    """
+    key = hypoxia_current.strip().lower()
+    mapping = {
+        "diel": 0,
+        "episodic": 1,
+        "seasonal": 2,
+        "seasonl": 2,
+        "periodic": 3,
+        "persistent": 4,
+    }
+    return mapping.get(key, -1)
 
 
 def aggregate_diaz_to_cells(
     diaz_lat: np.ndarray,
     diaz_lon: np.ndarray,
+    diaz_bins: np.ndarray,
     bin_size: float,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     r"""Return one representative point per aggregation cell containing a Diaz site.
 
     Uses the same grid snapping as compute_site_stats so Diaz cells align perfectly
@@ -73,18 +91,32 @@ def aggregate_diaz_to_cells(
 
     Returns:
         - cell_lat, cell_lon : Deduplicated cell-centre coordinates [°].
+        - cell_bin           : One category bin per cell (-1 uses fallback color).
     """
     bin_deg = bin_size / KM_PER_DEG
     snapped_lat = np.round(diaz_lat / bin_deg) * bin_deg
     snapped_lon = np.round(diaz_lon / bin_deg) * bin_deg
-    unique_cells = np.unique(np.column_stack([snapped_lat, snapped_lon]), axis=0)
-    return unique_cells[:, 0], unique_cells[:, 1]
+    unique_cells, inverse = np.unique(
+        np.column_stack([snapped_lat, snapped_lon]), axis=0, return_inverse=True
+    )
+
+    # Keep one category per cell by taking the highest mapped bin among members.
+    # This preserves persistent signals when mixed categories fall into one cell.
+    cell_bin = np.full(len(unique_cells), -1, dtype=int)
+    for idx in range(len(unique_cells)):
+        bins_here = diaz_bins[inverse == idx]
+        valid = bins_here[bins_here >= 0]
+        if valid.size > 0:
+            cell_bin[idx] = int(valid.max())
+
+    return unique_cells[:, 0], unique_cells[:, 1], cell_bin
 
 
 def overlay_diaz(
-    ax: plt.Axes,
+    ax: GeoAxes,
     diaz_lat: np.ndarray,
     diaz_lon: np.ndarray,
+    diaz_hypoxia_current: np.ndarray,
     bin_size: float,
 ) -> None:
     r"""Overlay Diaz & Rosenberg sites as triangles on an existing map axes.
@@ -102,17 +134,27 @@ def overlay_diaz(
     if len(diaz_lat) == 0:
         return
 
+    cat_colors = _hypoxic_pct_colors()
+    diaz_bins = np.array([_diaz_category_to_bin(str(value)) for value in diaz_hypoxia_current])
+
     if AGGREGATE_DIAZ:
-        plot_lat, plot_lon = aggregate_diaz_to_cells(diaz_lat, diaz_lon, bin_size)
+        plot_lat, plot_lon, plot_bins = aggregate_diaz_to_cells(
+            diaz_lat,
+            diaz_lon,
+            diaz_bins,
+            bin_size,
+        )
     else:
-        plot_lat, plot_lon = diaz_lat, diaz_lon
+        plot_lat, plot_lon, plot_bins = diaz_lat, diaz_lon, diaz_bins
+
+    plot_colors = [cat_colors[k] if k >= 0 else DIAZ_COLOR_FALLBACK for k in plot_bins]
 
     ax.scatter(
         plot_lon,
         plot_lat,
         marker="^",
         s=DIAZ_MARKER_SIZE_PT2,
-        color=DIAZ_COLOR,
+        color=plot_colors,
         edgecolors="black",
         linewidths=0.3,
         transform=ccrs.PlateCarree(),
@@ -120,122 +162,33 @@ def overlay_diaz(
     )
 
 
-def _build_legend_handles(cat_colors: list) -> list[Line2D]:
-    r"""Build legend handles for ALL percentage categories plus the Diaz triangle.
+def _diaz_legend_handles() -> list[Line2D]:
+    r"""Build Diaz triangle legend handles using the same color bins as pct legend."""
+    cat_colors = _hypoxic_pct_colors()
+    labels = [
+        "Diaz Diel (<10)",
+        "Diaz Episodic (10--25)",
+        "Diaz Seasonal (25--50)",
+        "Diaz Periodic (50--75)",
+        "Diaz Persistent (>=75)",
+        "Diaz Other",
+    ]
+    colors = [*cat_colors, DIAZ_COLOR_FALLBACK]
 
-    The full list is always returned so the legend is identical across all time-
-    period plots, making them directly comparable.
-
-    Arguments:
-        - cat_colors : List of RGBA colors, one per category.
-
-    Returns:
-        - handles : List of Line2D proxy handles.
-    """
-    n_cats = len(CIRCLE_THRESHOLDS) + 1
-    handles = []
-    for k in range(n_cats):
-        if k == 0:
-            label = rf"$< {CIRCLE_THRESHOLDS[0]}\,\%$"
-        elif k < len(CIRCLE_THRESHOLDS):
-            label = rf"${CIRCLE_THRESHOLDS[k - 1]}$--${CIRCLE_THRESHOLDS[k]}\,\%$"
-        else:
-            label = rf"$\geq {CIRCLE_THRESHOLDS[-1]}\,\%$"
-
-        handles.append(
-            Line2D(
-                [],
-                [],
-                marker="o",
-                linestyle="none",
-                markersize=np.sqrt(CIRCLE_SIZES_PT2[k]),
-                markerfacecolor=cat_colors[k],
-                markeredgecolor="none",
-                label=label,
-            )
-        )
-
-    diaz_label = r"Diaz \& Rosenberg (aggregated)" if AGGREGATE_DIAZ else r"Diaz \& Rosenberg"
-    handles.append(
+    return [
         Line2D(
             [],
             [],
             marker="^",
             linestyle="none",
             markersize=np.sqrt(DIAZ_MARKER_SIZE_PT2),
-            markerfacecolor=DIAZ_COLOR,
+            markerfacecolor=color,
             markeredgecolor="black",
             markeredgewidth=0.3,
-            label=diaz_label,
+            label=label,
         )
-    )
-    return handles
-
-
-def _make_category_map(
-    ax: plt.Axes,
-    s_lat: np.ndarray,
-    s_lon: np.ndarray,
-    pct: np.ndarray,
-    diaz_lat: np.ndarray,
-    diaz_lon: np.ndarray,
-    title: str,
-) -> None:
-    r"""Draw a discrete-size bubble map with Diaz overlay on an existing GeoAxes.
-
-    Arguments:
-        - ax       : Cartopy GeoAxes to draw on.
-        - s_lat    : Site latitudes [°].
-        - s_lon    : Site longitudes [°].
-        - pct      : Hypoxic percentage per site [0–100].
-        - diaz_lat : Diaz site latitudes for the current period [°].
-        - diaz_lon : Diaz site longitudes for the current period [°].
-        - title    : Map title string (LaTeX mathtext).
-    """
-    n_cats = len(CIRCLE_THRESHOLDS) + 1
-    cmap_obj = plt.get_cmap(CMAP_HYPOXIA_PCT)
-    cat_colors = [cmap_obj(i / max(n_cats - 1, 1)) for i in range(n_cats)]
-
-    categories = np.digitize(pct, CIRCLE_THRESHOLDS)
-
-    for k in range(n_cats):
-        mask = categories == k
-        if mask.sum() == 0:
-            continue
-        ax.scatter(
-            s_lon[mask],
-            s_lat[mask],
-            s=CIRCLE_SIZES_PT2[k],
-            color=cat_colors[k],
-            alpha=ALPHA_SCATTER,
-            linewidths=0,
-            transform=ccrs.PlateCarree(),
-            zorder=3,
-        )
-
-    overlay_diaz(ax, diaz_lat, diaz_lon, bin_size=BIN_SIZE)
-
-    ax.legend(
-        handles=_build_legend_handles(cat_colors),
-        fontsize=FONT_SIZE_LEGEND,
-        loc="lower left",
-        framealpha=LEGEND_FRAMEALPHA,
-    )
-    ax.set_title(title, fontsize=FONT_SIZE_TITLE)
-    ax.tick_params(labelsize=FONT_SIZE_TICK)
-
-
-def _new_map_axes() -> tuple[plt.Figure, plt.Axes]:
-    r"""Create a new figure with a Robinson-projection GeoAxes."""
-    fig = plt.figure(figsize=FIGURE_SIZE_MAP, dpi=FIGURE_DPI)
-    ax = fig.add_subplot(1, 1, 1, projection=ccrs.Robinson())
-    ax.set_global()
-    fig.patch.set_facecolor("white")
-    ax.set_facecolor("white")
-    ax.add_feature(cfeature.OCEAN, color="white", zorder=0)
-    ax.add_feature(cfeature.LAND, color="#e8e8e8", zorder=1)
-    ax.add_feature(cfeature.COASTLINE, linewidth=LINE_WIDTH_THIN, edgecolor="0.4", zorder=2)
-    return fig, ax
+        for label, color in zip(labels, colors)
+    ]
 
 
 if __name__ == "__main__":
@@ -255,11 +208,23 @@ if __name__ == "__main__":
     diaz_lat = ds_diaz["lat"].values
     diaz_lon = ds_diaz["lon"].values
     diaz_decade = ds_diaz["decade"].values.astype(int)
+    diaz_hypoxia_current = ds_diaz["hypoxia_current"].values.astype(str)
+
+    # Apply a global Diaz filter in decade space based on considered-year bounds.
+    # With MAX_CONSIDERED_YEAR=2025 this maps to last full decade 2020.
+    min_diaz_decade = (MIN_CONSIDERED_YEAR // 10) * 10
+    max_diaz_decade = (MAX_CONSIDERED_YEAR // 10) * 10
+    diaz_in_window = (diaz_decade >= min_diaz_decade) & (diaz_decade <= max_diaz_decade)
+
+    diaz_lat = diaz_lat[diaz_in_window]
+    diaz_lon = diaz_lon[diaz_in_window]
+    diaz_decade = diaz_decade[diaz_in_window]
+    diaz_hypoxia_current = diaz_hypoxia_current[diaz_in_window]
 
     print(f"  Profiles: {len(lat):,}  |  Diaz sites: {len(diaz_lat)}")
 
     # --- Time periods ---
-    decades = list(range(1950, 2030, 10))
+    decades = list(range(min_diaz_decade, max_diaz_decade + 10, 10))
     time_periods = [("all", None)] + [(str(d), d) for d in decades]
 
     out_dir = Path(__file__).parent.parent / "plots" / "figure-2"
@@ -289,9 +254,11 @@ if __name__ == "__main__":
         s_lat = stats["lat"][show]
         s_lon = stats["lon"][show]
         pct = stats["pct_hypoxic"][show]
+        n_hypoxic = stats["n_hypoxic"][show]
 
         d_lat = diaz_lat[diaz_mask]
         d_lon = diaz_lon[diaz_mask]
+        d_hypoxia_current = diaz_hypoxia_current[diaz_mask]
 
         mean_pct = stats["pct_hypoxic"].mean()
         print(
@@ -300,17 +267,25 @@ if __name__ == "__main__":
             f"{diaz_mask.sum():>3,} Diaz sites | mean pct={mean_pct:.1f}%"
         )
 
-        fig, ax = _new_map_axes()
-        _make_category_map(
+        fig, ax = new_map_axes()
+        make_category_map(
             ax,
             s_lat=s_lat,
             s_lon=s_lon,
             pct=pct,
-            diaz_lat=d_lat,
-            diaz_lon=d_lon,
+            n_hypoxic=n_hypoxic,
             title=rf"Hypoxic percentage + Diaz sites -- {title_suffix}",
+            extra_legend_handles=_diaz_legend_handles(),
         )
-        fig.tight_layout(pad=1.5)
+        overlay_diaz(
+            ax,
+            d_lat,
+            d_lon,
+            d_hypoxia_current,
+            bin_size=BIN_SIZE,
+        )
+
+        fig.subplots_adjust(right=0.78)
         fig.savefig(
             out_dir / f"figure-2-{period_name}.pdf",
             dpi=FIGURE_DPI_SAVE,
