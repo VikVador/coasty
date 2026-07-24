@@ -209,6 +209,7 @@ if __name__ == "__main__":
     diaz_lon = ds_diaz["lon"].values
     diaz_decade = ds_diaz["decade"].values.astype(int)
     diaz_hypoxia_current = ds_diaz["hypoxia_current"].values.astype(str)
+    diaz_classification = ds_diaz["classification"].values.astype(str)
 
     # Apply a global Diaz filter in decade space based on considered-year bounds.
     # With MAX_CONSIDERED_YEAR=2025 this maps to last full decade 2020.
@@ -216,10 +217,18 @@ if __name__ == "__main__":
     max_diaz_decade = (MAX_CONSIDERED_YEAR // 10) * 10
     diaz_in_window = (diaz_decade >= min_diaz_decade) & (diaz_decade <= max_diaz_decade)
 
-    diaz_lat = diaz_lat[diaz_in_window]
-    diaz_lon = diaz_lon[diaz_in_window]
-    diaz_decade = diaz_decade[diaz_in_window]
-    diaz_hypoxia_current = diaz_hypoxia_current[diaz_in_window]
+    # Filter to keep only Hypoxic or Natural Hypoxia, excluding Eutrophic, eutrophic, Improved
+    classification_filter = np.isin(
+        diaz_classification,
+        ["Hypoxic", "Natural Hypoxia"],
+    )
+
+    global_diaz_filter = diaz_in_window & classification_filter
+
+    diaz_lat = diaz_lat[global_diaz_filter]
+    diaz_lon = diaz_lon[global_diaz_filter]
+    diaz_decade = diaz_decade[global_diaz_filter]
+    diaz_hypoxia_current = diaz_hypoxia_current[global_diaz_filter]
 
     print(f"  Profiles: {len(lat):,}  |  Diaz sites: {len(diaz_lat)}")
 

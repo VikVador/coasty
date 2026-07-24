@@ -6,7 +6,7 @@ import xarray as xr
 from pathlib import Path
 
 from coasty.config import PATH_DATASET
-from coasty.const import MIN_CONSIDERED_YEAR, MAX_CONSIDERED_YEAR
+from coasty.const import BIN_SIZE, MIN_CONSIDERED_YEAR, MAX_CONSIDERED_YEAR
 from coasty.visualize.const import (
     FIGURE_DPI_SAVE,
     FIGURE_SIZE_WIDE,
@@ -56,7 +56,7 @@ if __name__ == "__main__":
             mean_pct[i] = np.nan
             continue
 
-        stats = compute_site_stats(lat[mask], lon[mask], is_hypoxic[mask], bin_size=10)
+        stats = compute_site_stats(lat[mask], lon[mask], is_hypoxic[mask], bin_size=BIN_SIZE)
         n_hypoxic_sites[i] = (stats["n_hypoxic"] > 0).sum()
         # Mean over ALL sites (zeros included) to avoid inflation from single-profile sites
         mean_pct[i] = stats["pct_hypoxic"].mean()
