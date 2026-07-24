@@ -32,4 +32,3 @@ You must **read and strictly adhere to the guidelines** describe in the followin
 4. Update `notebook/coasty.ipynb` by adding a new cell to execute the figure script you just created.
 
 5. Make sure to follow the guidelines and that your code works by checking the generated figure.
-
