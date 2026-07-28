@@ -13,6 +13,7 @@ References:
     - Garcia, H.E., and Gordon, L.I., 1992: Oxygen solubility in seawater: Better fitting equations. Limnology and Oceanography, 37(6), 1307-1312.
 """
 
+import gsw
 import numpy as np
 
 from coasty.const import HYPOXIA_THRESHOLD
@@ -38,76 +39,99 @@ B2 = 0.014259
 B3 = -0.0017000
 
 
-def compute_o2_saturation_garcia_gordon(temp_c: np.ndarray, sal_psu: np.ndarray) -> np.ndarray:
-    r"""Compute oxygen saturation concentration using Garcia & Gordon (1992).
-    
-    This computes the dissolved oxygen concentration at 100% saturation
-    (in µmol/kg) for given temperature and salinity.
-    
+def compute_o2_solubility_garcia_gordon(
+    temp_c: np.ndarray,
+    sal_psu: np.ndarray,
+    p_dbar: np.ndarray | float | None = None,
+    lon_deg: np.ndarray | float | None = None,
+    lat_deg: np.ndarray | float | None = None,
+) -> np.ndarray:
+    r"""Compute oxygen solubility with TEOS-10 GSW (gsw.O2sol).
+
     Arguments:
-        - temp_c : Temperature in degrees Celsius [°C]. Can be array-like.
-        - sal_psu : Practical Salinity [PSU]. Can be array-like.
-    
+        - temp_c : In-situ temperature [degC].
+        - sal_psu : Practical Salinity [PSU].
+        - p_dbar : Sea pressure [dbar]. If None, uses 0 dbar.
+        - lon_deg : Longitude [degE]. If None, uses 0.
+        - lat_deg : Latitude [degN]. If None, uses 0.
+
     Returns:
-        - o2_sat : Oxygen saturation concentration [µmol/kg].
-    
-    Notes:
-        The Garcia & Gordon (1992) formula computes solubility in ml/l at STP.
-        We convert to µmol/kg using:
-            1 ml/l O2 = 44.66 µmol/l ≈ 44.66 µmol/kg (assuming density ≈ 1 kg/l)
+        - o2_sol : Oxygen solubility [umol/kg].
     """
     temp_c = np.asarray(temp_c, dtype=float)
     sal_psu = np.asarray(sal_psu, dtype=float)
-    
-    # Convert to Kelvin
-    temp_k = temp_c + 273.15
-    
-    # Avoid division by zero and log of zero/negative
-    valid = (temp_k > 0) & (sal_psu >= 0)
-    
-    o2_sat = np.full_like(temp_c, np.nan, dtype=float)
-    
-    if not np.any(valid):
-        return o2_sat
-    
-    T = temp_k[valid]
-    S = sal_psu[valid]
-    
-    # Compute ln(O2_solubility) in ml/l at 1 atm
-    ln_c = (
-        A1 
-        + A2 * 100.0 / T 
-        + A3 * np.log(T / 100.0) 
-        + A4 * T / 100.0 
-        + S * (B1 + B2 * T / 100.0 + B3 * (T / 100.0) ** 2)
+
+    # Build broadcastable auxiliary arrays for pressure and position.
+    if p_dbar is None:
+        p = np.zeros_like(temp_c, dtype=float)
+    else:
+        p = np.broadcast_to(np.asarray(p_dbar, dtype=float), temp_c.shape)
+
+    if lon_deg is None:
+        lon = np.zeros_like(temp_c, dtype=float)
+    else:
+        lon = np.broadcast_to(np.asarray(lon_deg, dtype=float), temp_c.shape)
+
+    if lat_deg is None:
+        lat = np.zeros_like(temp_c, dtype=float)
+    else:
+        lat = np.broadcast_to(np.asarray(lat_deg, dtype=float), temp_c.shape)
+
+    o2_sol = np.full_like(temp_c, np.nan, dtype=float)
+    valid = (
+        np.isfinite(temp_c)
+        & np.isfinite(sal_psu)
+        & np.isfinite(p)
+        & np.isfinite(lon)
+        & np.isfinite(lat)
+        & (sal_psu >= 0.0)
     )
-    
-    # Convert from ln(ml/l) to ml/l
-    c_ml_per_l = np.exp(ln_c)
-    
-    # Convert from ml/l to µmol/kg
-    # 1 ml O2 at STP = 1/22.4 mol = 1000/22.4 µmol = 44.642857 µmol
-    # So 1 ml/l = 44.642857 µmol/l ≈ 44.642857 µmol/kg (density ≈ 1 kg/l)
-    o2_sat_molal = c_ml_per_l * 44.642857
-    
-    o2_sat[valid] = o2_sat_molal
-    
-    return o2_sat
+    if not np.any(valid):
+        return o2_sol
+
+    sp = sal_psu[valid]
+    t = temp_c[valid]
+    p_valid = p[valid]
+    lon_valid = lon[valid]
+    lat_valid = lat[valid]
+
+    sa = gsw.SA_from_SP(sp, p_valid, lon_valid, lat_valid)
+    ct = gsw.CT_from_t(sa, t, p_valid)
+    o2_sol[valid] = gsw.O2sol(sa, ct, p_valid, lon_valid, lat_valid)
+    return o2_sol
 
 
-def compute_o2_saturation_umol_per_kg(temp_c: np.ndarray, sal_psu: np.ndarray) -> np.ndarray:
-    r"""Wrapper for oxygen saturation calculation with explicit unit in name.
+def compute_o2_solubility_umol_per_kg(temp_c: np.ndarray, sal_psu: np.ndarray) -> np.ndarray:
+    r"""Wrapper for oxygen solubility calculation with explicit unit in name.
     
-    Same as compute_o2_saturation_garcia_gordon but with more explicit naming.
+    Same as compute_o2_solubility_garcia_gordon but with more explicit naming.
     
     Arguments:
         - temp_c : Temperature in degrees Celsius [°C].
         - sal_psu : Practical Salinity [PSU].
     
     Returns:
-        - o2_sat : Oxygen saturation concentration [µmol/kg].
+        - o2_sol : Oxygen solubility concentration [µmol/kg].
     """
-    return compute_o2_saturation_garcia_gordon(temp_c, sal_psu)
+    return compute_o2_solubility_garcia_gordon(temp_c, sal_psu)
+
+
+def compute_o2_saturation_garcia_gordon(temp_c: np.ndarray, sal_psu: np.ndarray) -> np.ndarray:
+    r"""Backward-compatible alias for oxygen saturation calculation.
+
+    Uses the same Garcia & Gordon implementation as solubility.
+    """
+    return compute_o2_solubility_garcia_gordon(temp_c, sal_psu)
+
+
+def compute_o2_saturation(ds) -> np.ndarray:
+    r"""Compute O2 saturation concentration for each observation.
+
+    Returns observation-level saturation/solubility from TEMP and PSAL.
+    """
+    temp = ds["TEMP"].values.astype(float)
+    sal = ds["PSAL"].values.astype(float)
+    return compute_o2_saturation_garcia_gordon(temp, sal)
 
 
 # =============================================================================
@@ -312,61 +336,137 @@ def compute_po2(
     return po2
 
 
-def compute_o2_saturation(
+def compute_o2_solubility(
     ds,
+    depth: str = "surface"
 ) -> np.ndarray:
-    r"""Compute O2 saturation concentration for each observation.
-    
-    This computes the oxygen concentration that would be present at 100% saturation
-    for the given temperature and salinity conditions.
-    
+    r"""Compute per-profile O2 solubility at surface or bottom.
+
+    For each profile:
+      - depth="surface": use the first measurement in the profile.
+      - depth="bottom": use the last measurement in the profile.
+
     Arguments:
-        - ds : Loaded coasty dataset with TEMP and PSAL.
-    
+        - ds : Loaded coasty dataset with TEMP, PSAL, obs_depths,
+               profile_start, and profile_end.
+        - depth : Depth level to compute solubility for ("surface" or "bottom").
+
     Returns:
-        - o2_sat : Array of same shape as observations with O2 saturation [µmol/kg].
+        - o2_sol : Array of shape (n_profiles,) with O2 solubility [µmol/kg].
     """
+    if depth not in {"surface", "bottom"}:
+        raise ValueError(f"Invalid depth argument: {depth}. Must be 'surface' or 'bottom'.")
+
     temp = ds["TEMP"].values.astype(float)
     sal = ds["PSAL"].values.astype(float)
-    
-    return compute_o2_saturation_garcia_gordon(temp, sal)
+    obs_depths = ds["obs_depths"].values.astype(float)
+    lat = ds["latitude"].values.astype(float)
+    lon = ds["longitude"].values.astype(float)
+    starts = ds["profile_start"].values.astype(int) - 1
+    ends = ds["profile_end"].values.astype(int)
+
+    n_profiles = len(starts)
+    selected_temp = np.full(n_profiles, np.nan, dtype=float)
+    selected_sal = np.full(n_profiles, np.nan, dtype=float)
+    selected_p = np.full(n_profiles, np.nan, dtype=float)
+    selected_lat = np.full(n_profiles, np.nan, dtype=float)
+    selected_lon = np.full(n_profiles, np.nan, dtype=float)
+
+    for i in range(n_profiles):
+        s = starts[i]
+        e = ends[i]
+
+        prof_temp = temp[s:e]
+        prof_sal = sal[s:e]
+        prof_depth = obs_depths[s:e]
+
+        if len(prof_temp) == 0:
+            continue
+
+        if depth == "surface":
+            idx = 0
+        else:
+            idx = len(prof_temp) - 1
+
+        t = prof_temp[idx]
+        s_ = prof_sal[idx]
+        d = prof_depth[idx]
+        lat_i = lat[i]
+        lon_i = lon[i]
+        if np.isfinite(t) and np.isfinite(s_) and np.isfinite(d) and np.isfinite(lat_i) and np.isfinite(lon_i):
+            selected_temp[i] = t
+            selected_sal[i] = s_
+            selected_lat[i] = lat_i
+            selected_lon[i] = lon_i
+            selected_p[i] = gsw.p_from_z(-d, lat_i)
+
+    return compute_o2_solubility_garcia_gordon(
+        selected_temp,
+        selected_sal,
+        p_dbar=selected_p,
+        lon_deg=selected_lon,
+        lat_deg=selected_lat,
+    )
 
 
-def compute_solubility_percentage(
+def compute_saturation_percentage(
     ds,
-    o2_sat: np.ndarray | None = None,
+    depth: str = "surface",
 ) -> np.ndarray:
-    r"""Compute solubility percentage (O2_measure / O2_saturation * 100).
+    r"""Compute saturation percentage (O2_measure / O2_saturation * 100).
     
     This represents the observed oxygen concentration as a percentage of the
     saturation concentration.
     
     Arguments:
         - ds : Loaded coasty dataset with DOX2, TEMP, PSAL.
-        - o2_sat : Optional pre-computed O2 saturation [µmol/kg]. If None, will be computed.
+        - depth : Depth level to compute saturation for ("surface" or "bottom").
     
     Returns:
-        - solubility_pct : Array of same shape as observations with solubility percentage [%].
+        - saturation_pct : Array of shape (n_profiles,) with saturation percentage [%].
     """
+    if depth not in {"surface", "bottom"}:
+        raise ValueError(f"Invalid depth argument: {depth}. Must be 'surface' or 'bottom'.")
+
     dox2 = ds["DOX2"].values.astype(float)
-    
-    if o2_sat is None:
-        o2_sat = compute_o2_saturation(ds)
-    
+    starts = ds["profile_start"].values.astype(int) - 1
+    ends = ds["profile_end"].values.astype(int)
+
+    n_profiles = len(starts)
+    selected_dox2 = np.full(n_profiles, np.nan, dtype=float)
+
+    for i in range(n_profiles):
+        s = starts[i]
+        e = ends[i]
+        prof_dox2 = dox2[s:e]
+        if len(prof_dox2) == 0:
+            continue
+
+        if depth == "surface":
+            idx = 0
+        else:
+            idx = len(prof_dox2) - 1
+
+        val = prof_dox2[idx]
+        if np.isfinite(val):
+            selected_dox2[i] = val
+
+    o2_sol = compute_o2_solubility(ds, depth=depth)
+
     # Avoid division by zero
-    valid = (o2_sat > 0) & np.isfinite(dox2) & np.isfinite(o2_sat)
-    
-    solubility_pct = np.full_like(dox2, np.nan, dtype=float)
-    solubility_pct[valid] = 100.0 * dox2[valid] / o2_sat[valid]
-    
-    return solubility_pct
+    valid = (o2_sol > 0) & np.isfinite(selected_dox2) & np.isfinite(o2_sol)
+
+    saturation_pct = np.full(n_profiles, np.nan, dtype=float)
+    saturation_pct[valid] = 100.0 * selected_dox2[valid] / o2_sol[valid]
+
+    return saturation_pct
 
 
 def compute_aou(
     ds,
-    o2_sat: np.ndarray | None = None,
+    depth: str = "bottom",
 ) -> np.ndarray:
-    r"""Compute Apparent Oxygen Utilization (AOU = O2_saturation - O2_observed).
+    r"""Compute Apparent Oxygen Utilization (AOU = O2_solubility - O2_observed).
     
     AOU represents the oxygen deficit, i.e., how much oxygen has been consumed
     relative to the saturation value. Positive AOU indicates undersaturation,
@@ -374,20 +474,41 @@ def compute_aou(
     
     Arguments:
         - ds : Loaded coasty dataset with DOX2, TEMP, PSAL.
-        - o2_sat : Optional pre-computed O2 saturation [µmol/kg]. If None, will be computed.
+        - depth : Depth level to compute AOU for ("surface" or "bottom").
     
     Returns:
         - aou : Array of same shape as observations with AOU [µmol/kg].
     """
     dox2 = ds["DOX2"].values.astype(float)
+    starts = ds["profile_start"].values.astype(int) - 1
+    ends = ds["profile_end"].values.astype(int)
+
+    n_profiles = len(starts)
+    selected_dox2 = np.full(n_profiles, np.nan, dtype=float)
+
+    for i in range(n_profiles):
+        s = starts[i]
+        e = ends[i]
+        prof_dox2 = dox2[s:e]
+        if len(prof_dox2) == 0:
+            continue
+
+        if depth == "surface":
+            idx = 0
+        else:
+            idx = len(prof_dox2) - 1
+
+        val = prof_dox2[idx]
+        if np.isfinite(val):
+            selected_dox2[i] = val
     
-    if o2_sat is None:
-        o2_sat = compute_o2_saturation(ds)
+
+    o2_sol = compute_o2_solubility(ds, depth=depth)
     
-    valid = np.isfinite(dox2) & np.isfinite(o2_sat)
+    valid = np.isfinite(selected_dox2) & np.isfinite(o2_sol)
     
-    aou = np.full_like(dox2, np.nan, dtype=float)
-    aou[valid] = o2_sat[valid] - dox2[valid]
+    aou = np.full_like(selected_dox2, np.nan, dtype=float)
+    aou[valid] = o2_sol[valid] - selected_dox2[valid]
     
     return aou
 
@@ -420,77 +541,3 @@ def compute_per_profile_po2_mean(ds) -> np.ndarray:
     
     return profile_po2_mean
 
-
-def compute_per_profile_o2_saturation_mean(ds) -> np.ndarray:
-    r"""Compute mean O2 saturation for each profile.
-    
-    Arguments:
-        - ds : Loaded coasty dataset.
-    
-    Returns:
-        - profile_o2_sat_mean : Array of shape (n_profiles,) with mean O2 saturation [µmol/kg].
-    """
-    o2_sat = compute_o2_saturation(ds)
-    starts = ds["profile_start"].values.astype(int) - 1
-    ends = ds["profile_end"].values.astype(int)
-    
-    n_profiles = len(starts)
-    profile_o2_sat_mean = np.full(n_profiles, np.nan, dtype=float)
-    
-    for i in range(n_profiles):
-        profile_o2_sat = o2_sat[starts[i]:ends[i]]
-        valid = np.isfinite(profile_o2_sat)
-        if np.sum(valid) > 0:
-            profile_o2_sat_mean[i] = np.mean(profile_o2_sat[valid])
-    
-    return profile_o2_sat_mean
-
-
-def compute_per_profile_solubility_pct_mean(ds) -> np.ndarray:
-    r"""Compute mean solubility percentage for each profile.
-    
-    Arguments:
-        - ds : Loaded coasty dataset.
-    
-    Returns:
-        - profile_solubility_pct_mean : Array of shape (n_profiles,) with mean solubility [%].
-    """
-    solubility_pct = compute_solubility_percentage(ds)
-    starts = ds["profile_start"].values.astype(int) - 1
-    ends = ds["profile_end"].values.astype(int)
-    
-    n_profiles = len(starts)
-    profile_solubility_pct_mean = np.full(n_profiles, np.nan, dtype=float)
-    
-    for i in range(n_profiles):
-        profile_solubility = solubility_pct[starts[i]:ends[i]]
-        valid = np.isfinite(profile_solubility)
-        if np.sum(valid) > 0:
-            profile_solubility_pct_mean[i] = np.mean(profile_solubility[valid])
-    
-    return profile_solubility_pct_mean
-
-
-def compute_per_profile_aou_mean(ds) -> np.ndarray:
-    r"""Compute mean AOU for each profile.
-    
-    Arguments:
-        - ds : Loaded coasty dataset.
-    
-    Returns:
-        - profile_aou_mean : Array of shape (n_profiles,) with mean AOU [µmol/kg].
-    """
-    aou = compute_aou(ds)
-    starts = ds["profile_start"].values.astype(int) - 1
-    ends = ds["profile_end"].values.astype(int)
-    
-    n_profiles = len(starts)
-    profile_aou_mean = np.full(n_profiles, np.nan, dtype=float)
-    
-    for i in range(n_profiles):
-        profile_aou = aou[starts[i]:ends[i]]
-        valid = np.isfinite(profile_aou)
-        if np.sum(valid) > 0:
-            profile_aou_mean[i] = np.mean(profile_aou[valid])
-    
-    return profile_aou_mean

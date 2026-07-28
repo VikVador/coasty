@@ -1,10 +1,11 @@
-r"""Figure 1: Vertically averaged oxygen inventory of the global coastal zone.
+r"""Figure 4: O2 solubility at the surface.
 
-This script computes and visualizes the vertically averaged oxygen inventory
-for each profile in the coastal dataset, aggregated by site.
+This script computes and visualizes the O2 solubility at the surface 
+for each profile in the coastal dataset.
 
-The vertically averaged oxygen inventory is the mean DOX2 concentration over
-the water column for each profile.
+O2 solubility is computed using the Garcia & Gordon (1992) equation based on 
+temperature and salinity. This represents the oxygen concentration that
+would be present at 100% saturation for the given environmental conditions.
 
 Generates:
   1. A single global spatial map for all time periods combined
@@ -18,18 +19,19 @@ import xarray as xr
 from pathlib import Path
 
 from coasty.config import PATH_DATASET_SURFACE
-from coasty.const import BIN_SIZE, HYPOXIA_THRESHOLD
-from coasty.diagnosis import compute_vertically_averaged_oxygen_inventory
+from coasty.const import BIN_SIZE
+from coasty.diagnosis import compute_o2_solubility
 from coasty.visualize.const import CMAP_OXYGEN_SEQUENTIAL, FIGURE_DPI_SAVE
 from coasty.visualize.utils import compute_site_median, plot_hypoxia_map
 
 # PROMPT
 figure_prompt = """
-    Create maps showing the vertically averaged oxygen inventory [µmol/kg]
-    for the coastal zone. First, display a single global map for all time
-    periods combined. Then, create decadal maps. Aggregate profiles into 
-    BIN_SIZE-km sites and compute the median vertically averaged oxygen
-    for each site. Display as maps with the sequential oxygen colormap.
+    Create maps showing the mean O2 solubility [µmol/kg] for the
+    coastal zone. First, display a single global map for all time periods combined.
+    Then, create decadal maps. O2 solubility is computed using Garcia & Gordon
+    (1992) solubility equation based on temperature and salinity. Aggregate
+    profiles into BIN_SIZE-km sites and compute the median O2 solubility for
+    each site. Display as maps with the sequential oxygen colormap.
 """
 
 
@@ -47,13 +49,13 @@ if __name__ == "__main__":
     print(f"  Profiles: {len(lat):,}")
     
     # --- Compute diagnostic ---
-    print("Computing vertically averaged oxygen inventory...")
-    vert_avg_o2 = compute_vertically_averaged_oxygen_inventory(ds)
+    print("Computing O2 solubility...")
+    o2_sol_mean = compute_o2_solubility(ds, depth="surface")
     
-    valid = np.isfinite(vert_avg_o2)
-    print(f"  Profiles with valid vertically averaged O2: {valid.sum():,} / {len(vert_avg_o2):,}")
+    valid = np.isfinite(o2_sol_mean)
+    print(f"  Profiles with valid O2 solubility: {valid.sum():,} / {len(o2_sol_mean):,}")
     
-    out_dir = Path(__file__).parent.parent.parent / "plots" / "analysis" / "figure-1"
+    out_dir = Path(__file__).parent.parent.parent / "plots" / "analysis" / "figure-4"
     out_dir.mkdir(parents=True, exist_ok=True)
     
     last_fig = None
@@ -63,26 +65,25 @@ if __name__ == "__main__":
     site_stats = compute_site_median(
         lat[valid], 
         lon[valid], 
-        vert_avg_o2[valid], 
+        o2_sol_mean[valid], 
         bin_size=BIN_SIZE
     )
     valid_sites = np.isfinite(site_stats["median"])
     
-    n_hypoxic = (site_stats["median"][valid_sites] < HYPOXIA_THRESHOLD).sum()
-    print(f"  Total sites: {valid_sites.sum():,} | Hypoxic sites: {n_hypoxic}")
+    print(f"  Total sites: {valid_sites.sum():,}")
     
     fig, ax = plot_hypoxia_map(
         site_lats=site_stats["lat"][valid_sites],
         site_lons=site_stats["lon"][valid_sites],
         metric=site_stats["median"][valid_sites],
-        title=r"Median vertically averaged $O_2$ -- All time",
-        cbar_label=r"Vertically averaged $O_2$ $[\mu\mathrm{mol\,kg}^{-1}]$",
+        title=r"Median $O_2$ solubility -- All time",
+        cbar_label=r"$O_2$ solubility $[\mu\mathrm{mol\,kg}^{-1}]$",
         cmap=CMAP_OXYGEN_SEQUENTIAL,
         scale_marker_size=False,
     )
     
     fig.savefig(
-        out_dir / "figure-1-vertically-averaged-o2-all-space.pdf",
+        out_dir / "figure-4-o2-solubility-surface.pdf",
         dpi=FIGURE_DPI_SAVE,
         bbox_inches="tight",
     )
@@ -103,15 +104,14 @@ if __name__ == "__main__":
         site_stats = compute_site_median(
             lat[mask], 
             lon[mask], 
-            vert_avg_o2[mask], 
+            o2_sol_mean[mask], 
             bin_size=BIN_SIZE
         )
         valid_sites = np.isfinite(site_stats["median"])
         
-        n_hypoxic = (site_stats["median"][valid_sites] < HYPOXIA_THRESHOLD).sum()
         print(
             f"  {decade}s: {mask.sum():,} profiles | "
-            f"{valid_sites.sum():,} sites | {n_hypoxic} hypoxic sites"
+            f"{valid_sites.sum():,} sites"
         )
         
         # Create map visualization
@@ -119,14 +119,14 @@ if __name__ == "__main__":
             site_lats=site_stats["lat"][valid_sites],
             site_lons=site_stats["lon"][valid_sites],
             metric=site_stats["median"][valid_sites],
-            title=rf"Median vertically averaged $O_2$ -- ${decade}$s",
-            cbar_label=r"Vertically averaged $O_2$ $[\mu\mathrm{mol\,kg}^{-1}]$",
+            title=rf"Median $O_2$ solubility -- ${decade}$s",
+            cbar_label=r"$O_2$ solubility $[\mu\mathrm{mol\,kg}^{-1}]$",
             cmap=CMAP_OXYGEN_SEQUENTIAL,
             scale_marker_size=False,
         )
         
         fig.savefig(
-            out_dir / f"figure-1-vertically-averaged-o2-{decade}.pdf",
+            out_dir / f"figure-4-o2-solubility-{decade}.pdf",
             dpi=FIGURE_DPI_SAVE,
             bbox_inches="tight",
         )

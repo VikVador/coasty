@@ -7,7 +7,7 @@ from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.lines import Line2D
 from pathlib import Path
 
-from coasty.config import PATH_DATASET, PATH_DATASET_DIAZ
+from coasty.config import PATH_DATASET_SURFACE, PATH_DATASET_DIAZ
 from coasty.const import (BIN_SIZE, 
                           KM_PER_DEG,
                           MIN_CONSIDERED_YEAR,
@@ -196,7 +196,7 @@ if __name__ == "__main__":
 
     # --- Load main dataset ---
     print("Loading dataset...")
-    ds = xr.open_dataset(PATH_DATASET, engine="netcdf4")
+    ds = xr.open_dataset(PATH_DATASET_SURFACE, engine="netcdf4")
 
     lat = ds["latitude"].values
     lon = ds["longitude"].values

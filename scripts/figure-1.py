@@ -11,7 +11,7 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from pathlib import Path
 
-from coasty.config import PATH_DATASET
+from coasty.config import PATH_DATASET_SURFACE
 from coasty.const import BIN_SIZE
 from coasty.visualize.const import FIGURE_DPI_SAVE
 from coasty.visualize.hypoxia_maps import (
@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     # Loading data
     print("Loading dataset...")
-    ds = xr.open_dataset(PATH_DATASET, engine="netcdf4")
+    ds = xr.open_dataset(PATH_DATASET_SURFACE, engine="netcdf4")
 
     lat = ds["latitude"].values
     lon = ds["longitude"].values

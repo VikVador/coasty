@@ -1,10 +1,11 @@
-r"""Figure 1: Vertically averaged oxygen inventory of the global coastal zone.
+r"""Figure 6: Saturation percentage (O2_measure / O2_solubility * 100).
 
-This script computes and visualizes the vertically averaged oxygen inventory
-for each profile in the coastal dataset, aggregated by site.
+This script computes and visualizes the saturation percentage for each profile
+in the coastal dataset.
 
-The vertically averaged oxygen inventory is the mean DOX2 concentration over
-the water column for each profile.
+Saturation percentage is computed as (DOX2 / O2_solubility) * 100, representing
+the observed oxygen concentration as a percentage of the solubility concentration.
+This is a direct measure of how saturated the water is with oxygen.
 
 Generates:
   1. A single global spatial map for all time periods combined
@@ -18,18 +19,22 @@ import xarray as xr
 from pathlib import Path
 
 from coasty.config import PATH_DATASET_SURFACE
-from coasty.const import BIN_SIZE, HYPOXIA_THRESHOLD
-from coasty.diagnosis import compute_vertically_averaged_oxygen_inventory
-from coasty.visualize.const import CMAP_OXYGEN_SEQUENTIAL, FIGURE_DPI_SAVE
+from coasty.const import BIN_SIZE
+from coasty.diagnosis import compute_saturation_percentage
+from coasty.visualize.const import CMAP_OXYGEN_DIVERGING, FIGURE_DPI_SAVE
 from coasty.visualize.utils import compute_site_median, plot_hypoxia_map
+
+PLOT_VMIN = 20.0
+PLOT_VMAX = 150.0
 
 # PROMPT
 figure_prompt = """
-    Create maps showing the vertically averaged oxygen inventory [µmol/kg]
-    for the coastal zone. First, display a single global map for all time
-    periods combined. Then, create decadal maps. Aggregate profiles into 
-    BIN_SIZE-km sites and compute the median vertically averaged oxygen
-    for each site. Display as maps with the sequential oxygen colormap.
+    Create maps showing the mean saturation percentage [%] for the coastal zone.
+    First, display a single global map for all time periods combined. Then, create
+    decadal maps. Saturation percentage is (DOX2 / O2_solubility) * 100. Aggregate
+    profiles into BIN_SIZE-km sites and compute the median saturation percentage
+    for each site. Display as maps with the diverging oxygen colormap to highlight
+    undersaturated (low %) and supersaturated (high %) regions.
 """
 
 
@@ -47,13 +52,13 @@ if __name__ == "__main__":
     print(f"  Profiles: {len(lat):,}")
     
     # --- Compute diagnostic ---
-    print("Computing vertically averaged oxygen inventory...")
-    vert_avg_o2 = compute_vertically_averaged_oxygen_inventory(ds)
+    print("Computing saturation percentage...")
+    saturation_pct = compute_saturation_percentage(ds, depth="surface")
     
-    valid = np.isfinite(vert_avg_o2)
-    print(f"  Profiles with valid vertically averaged O2: {valid.sum():,} / {len(vert_avg_o2):,}")
+    valid = np.isfinite(saturation_pct)
+    print(f"  Profiles with valid saturation %: {valid.sum():,} / {len(saturation_pct):,}")
     
-    out_dir = Path(__file__).parent.parent.parent / "plots" / "analysis" / "figure-1"
+    out_dir = Path(__file__).parent.parent.parent / "plots" / "analysis" / "figure-6"
     out_dir.mkdir(parents=True, exist_ok=True)
     
     last_fig = None
@@ -63,26 +68,28 @@ if __name__ == "__main__":
     site_stats = compute_site_median(
         lat[valid], 
         lon[valid], 
-        vert_avg_o2[valid], 
+        saturation_pct[valid], 
         bin_size=BIN_SIZE
     )
     valid_sites = np.isfinite(site_stats["median"])
     
-    n_hypoxic = (site_stats["median"][valid_sites] < HYPOXIA_THRESHOLD).sum()
-    print(f"  Total sites: {valid_sites.sum():,} | Hypoxic sites: {n_hypoxic}")
+    print(f"  Total sites: {valid_sites.sum():,}")
+
+    metric_plot = np.clip(site_stats["median"][valid_sites], PLOT_VMIN, PLOT_VMAX)
     
     fig, ax = plot_hypoxia_map(
         site_lats=site_stats["lat"][valid_sites],
         site_lons=site_stats["lon"][valid_sites],
-        metric=site_stats["median"][valid_sites],
-        title=r"Median vertically averaged $O_2$ -- All time",
-        cbar_label=r"Vertically averaged $O_2$ $[\mu\mathrm{mol\,kg}^{-1}]$",
-        cmap=CMAP_OXYGEN_SEQUENTIAL,
+        metric=metric_plot,
+        title=r"Median $O_2$ saturation percentage -- All time",
+        cbar_label=r"$O_2$ saturation $[\%]$",
+        cmap=CMAP_OXYGEN_DIVERGING,
         scale_marker_size=False,
+        vmax=PLOT_VMAX,
     )
     
     fig.savefig(
-        out_dir / "figure-1-vertically-averaged-o2-all-space.pdf",
+        out_dir / "figure-6-saturation-percentage-surface.pdf",
         dpi=FIGURE_DPI_SAVE,
         bbox_inches="tight",
     )
@@ -103,30 +110,32 @@ if __name__ == "__main__":
         site_stats = compute_site_median(
             lat[mask], 
             lon[mask], 
-            vert_avg_o2[mask], 
+            saturation_pct[mask], 
             bin_size=BIN_SIZE
         )
         valid_sites = np.isfinite(site_stats["median"])
         
-        n_hypoxic = (site_stats["median"][valid_sites] < HYPOXIA_THRESHOLD).sum()
         print(
             f"  {decade}s: {mask.sum():,} profiles | "
-            f"{valid_sites.sum():,} sites | {n_hypoxic} hypoxic sites"
+            f"{valid_sites.sum():,} sites"
         )
+
+        metric_plot = np.clip(site_stats["median"][valid_sites], PLOT_VMIN, PLOT_VMAX)
         
         # Create map visualization
         fig, ax = plot_hypoxia_map(
             site_lats=site_stats["lat"][valid_sites],
             site_lons=site_stats["lon"][valid_sites],
-            metric=site_stats["median"][valid_sites],
-            title=rf"Median vertically averaged $O_2$ -- ${decade}$s",
-            cbar_label=r"Vertically averaged $O_2$ $[\mu\mathrm{mol\,kg}^{-1}]$",
-            cmap=CMAP_OXYGEN_SEQUENTIAL,
+            metric=metric_plot,
+            title=rf"Median $O_2$ saturation percentage -- ${decade}$s",
+            cbar_label=r"$O_2$ saturation $[\%]$",
+            cmap=CMAP_OXYGEN_DIVERGING,
             scale_marker_size=False,
+            vmax=PLOT_VMAX,
         )
         
         fig.savefig(
-            out_dir / f"figure-1-vertically-averaged-o2-{decade}.pdf",
+            out_dir / f"figure-6-saturation-percentage-{decade}.pdf",
             dpi=FIGURE_DPI_SAVE,
             bbox_inches="tight",
         )

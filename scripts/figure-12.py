@@ -7,7 +7,7 @@ import xarray as xr
 
 from pathlib import Path
 
-from coasty.config import PATH_DATASET
+from coasty.config import PATH_DATASET_SURFACE
 from coasty.visualize.const import (
     ALPHA_SCATTER,
     FIGURE_DPI,
@@ -74,7 +74,7 @@ if __name__ == "__main__":
 
     # --- Load data ---
     print("Loading dataset...")
-    ds = xr.open_dataset(PATH_DATASET, engine="netcdf4")
+    ds = xr.open_dataset(PATH_DATASET_SURFACE, engine="netcdf4")
     lat = ds["latitude"].values
     lon = ds["longitude"].values
     years = ds["obs_time"].dt.year.values

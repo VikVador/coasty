@@ -4,7 +4,7 @@ import xarray as xr
 
 from pathlib import Path
 
-from coasty.config import PATH_DATASET
+from coasty.config import PATH_DATASET_SURFACE
 from coasty.visualize.const import (
     FIGURE_DPI_SAVE,
     FIGURE_SIZE_WIDE,
@@ -34,7 +34,7 @@ if __name__ == "__main__":
 
     # --- Load data ---
     print("Loading dataset...")
-    ds = xr.open_dataset(PATH_DATASET, engine="netcdf4")
+    ds = xr.open_dataset(PATH_DATASET_SURFACE, engine="netcdf4")
     months = ds["obs_time"].dt.month.values
     is_hypoxic = compute_hypoxic_flag(ds)
 
