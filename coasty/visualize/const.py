@@ -7,8 +7,8 @@ import cmocean as cmo
 # --- Font sizes ---
 FONT_SIZE_TITLE      = 16         # Main plot title
 FONT_SIZE_SUBTITLE   = 14         # Subtitle or panel label (e.g. "(a)", "(b)")
-FONT_SIZE_X_LABEL    = 13         # X-axis label
-FONT_SIZE_Y_LABEL    = 13         # Y-axis label
+FONT_SIZE_X_LABEL    = 10         # X-axis label
+FONT_SIZE_Y_LABEL    = 10         # Y-axis label
 FONT_SIZE_TICK       = 11         # Tick labels on both axes
 FONT_SIZE_LEGEND     = 11         # Legend text
 FONT_SIZE_COLORBAR   = 11         # Colorbar tick labels and label
@@ -46,5 +46,27 @@ ALPHA_SCATTER = 0.7               # Scatter plot points
 # --- Colormaps ---
 CMAP_OXYGEN_SEQUENTIAL = cmo.cm.haline   # Sequential colormap for oxygen concentration
 CMAP_OXYGEN_DIVERGING  = cmo.cm.balance  # Diverging colormap for oxygen anomalies
-CMAP_HYPOXIA_COUNT     = "plasma"      # Count of hypoxic profiles per site
-CMAP_HYPOXIA_PCT       = cmo.cm.matter   # Hypoxic percentage per site
+CMAP_HYPOXIA_COUNT     = "cividis"        # Count of hypoxic profiles per site
+CMAP_HYPOXIA_PCT       = "cividis"   # Hypoxic percentage per site
+CMAP_SAMPLING_COUNT    = "viridis"       # Total profile count per site (sampling effort)
+CMAP_COVERAGE          = "YlGnBu"        # Fraction of months covered (aggregation analysis)
+
+# --- Diaz & Rosenberg hypoxia regime colors ---
+DIAZ_COLOR_SEASONAL   = "orange"
+DIAZ_COLOR_EPISODIC   = "steelblue"
+DIAZ_COLOR_PERSISTENT = "crimson"
+DIAZ_COLOR_UNKNOWN    = "gray"
+
+# --- Sampling intensity classification colors (figure-12) ---
+SAMPLING_COLOR_EPISODIC  = "#fee090"
+SAMPLING_COLOR_IRREGULAR = "#fdae61"
+SAMPLING_COLOR_MODERATE  = "#f46d43"
+SAMPLING_COLOR_INTENSE   = "#d73027"
+
+# --- Seasonal coverage colors (figure-11): number of seasons observed (1–4) ---
+SEASON_COLORS = {
+    1: "#d7181d",
+    2: "#a66119",
+    3: "#a6d96a",
+    4: "#fbbf23",
+}

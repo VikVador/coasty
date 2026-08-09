@@ -15,6 +15,7 @@ You must **read and strictly adhere to the guidelines** describe in the followin
 
 - Oxygen and hypoxia definitions: `.claude/coasty-definitions.md`
 - How to load and use our dataset: `.claude/coasty-data.md`
+- How to load and use diaz and rosenberg dataset: `.claude/coasty-data-diaz.md`
 - Python coding style: `.claude/coasty-python.md`
 - Figures style: `.claude/coasty-figures.md`
 
